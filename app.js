@@ -11,7 +11,7 @@ const TILE_SIZE = 256;
 const EARTH_RADIUS_METERS = 6378137;
 const NATIVE_ZOOM = { "50k": 15, "250k": 12 };
 const MAP_SCALE = { "50k": 50000, "250k": 250000 };
-const PDF_WORKER_BASE_URL = "";
+const PDF_WORKER_BASE_URL = "https://toposearch-ngi-proxy.jonathan-f66.workers.dev";
 const IS_GITHUB_PAGES =
   window.location.hostname.endsWith(".github.io") && window.location.hostname !== "localhost";
 
