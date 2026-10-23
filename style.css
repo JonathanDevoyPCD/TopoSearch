@@ -1,0 +1,214 @@
+:root {
+  color-scheme: light;
+  font-family: "Segoe UI", Arial, sans-serif;
+  color: #18231f;
+  background: #f2f3ed;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  min-width: 320px;
+  margin: 0;
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 20px clamp(16px, 4vw, 48px);
+  color: #f8f8f2;
+  background: #18231f;
+}
+
+.eyebrow {
+  margin: 0 0 5px;
+  color: #b8cc8a;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+}
+
+h1 {
+  margin: 0;
+  font-size: clamp(1.35rem, 3vw, 1.9rem);
+}
+
+.subtitle {
+  margin: 5px 0 0;
+  color: #d0d7cd;
+  font-size: 0.92rem;
+}
+
+.sheet-badge {
+  flex: 0 0 auto;
+  display: grid;
+  gap: 2px;
+  min-width: 104px;
+  padding: 10px 14px;
+  border: 1px solid #738960;
+  border-radius: 8px;
+  color: #f8f8f2;
+  background: transparent;
+  font-size: 1.05rem;
+  font-weight: 700;
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.sheet-badge strong {
+  font-size: inherit;
+}
+
+.sheet-badge span {
+  color: #c6d2bc;
+  font-size: 0.78rem;
+  font-weight: 400;
+}
+
+main {
+  padding: 14px clamp(10px, 2vw, 24px) 18px;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 12px 20px;
+  padding: 0 2px 12px;
+}
+
+.toolbar label {
+  display: grid;
+  gap: 5px;
+  color: #3d4b43;
+  font-size: 0.8rem;
+  font-weight: 650;
+}
+
+.toolbar select {
+  min-height: 38px;
+  min-width: 190px;
+  padding: 6px 30px 6px 10px;
+  border: 1px solid #c5cbc0;
+  border-radius: 5px;
+  background: #fff;
+  color: #18231f;
+  font: inherit;
+}
+
+.toolbar .checkbox-label {
+  display: flex;
+  align-items: center;
+  min-height: 38px;
+  gap: 8px;
+}
+
+.checkbox-label input {
+  width: 16px;
+  height: 16px;
+  accent-color: #597343;
+}
+
+.print-button,
+.cancel-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 7px 12px;
+  border: 1px solid #47643d;
+  border-radius: 5px;
+  background: #597343;
+  color: #fff;
+  font: inherit;
+  font-size: 0.84rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.print-button:disabled {
+  border-color: #a9b1a5;
+  background: #a9b1a5;
+  cursor: not-allowed;
+}
+
+.print-button svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.7;
+}
+
+.cancel-button {
+  border-color: #9b3022;
+  background: #9b3022;
+}
+
+.cancel-button[hidden] {
+  display: none;
+}
+
+.status {
+  flex: 1 1 220px;
+  margin: 0 0 9px;
+  color: #4d5b50;
+  font-size: 0.82rem;
+}
+
+.status[data-state="error"] {
+  color: #9b3022;
+}
+
+#map {
+  height: min(72vh, 820px);
+  min-height: 420px;
+  border: 1px solid #c5cbc0;
+  border-radius: 7px;
+  background: #e5e7df;
+}
+
+.app-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px 18px;
+  color: #58645b;
+  font-size: 0.76rem;
+}
+
+.app-footer p {
+  margin: 8px 0 0;
+}
+
+.coordinates {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 560px) {
+  .app-header {
+    align-items: flex-start;
+  }
+
+  .sheet-badge {
+    min-width: 84px;
+    padding: 8px;
+  }
+
+  #map {
+    height: 66vh;
+    min-height: 360px;
+  }
+}

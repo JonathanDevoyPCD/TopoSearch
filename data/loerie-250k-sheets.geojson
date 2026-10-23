@@ -1,0 +1,41 @@
+{
+    "type":  "FeatureCollection",
+    "name":  "Loerie-area 1:250,000 sheet index",
+    "features":  [
+                     {
+                         "type":  "Feature",
+                         "properties":  {
+                                            "s":  "3324",
+                                            "y":  2007,
+                                            "e":  5
+                                        },
+                         "geometry":  {
+                                          "type":  "Polygon",
+                                          "coordinates":  [
+                                                              [
+                                                                  [
+                                                                      24.0,
+                                                                      -34.25
+                                                                  ],
+                                                                  [
+                                                                      24.0,
+                                                                      -33.0
+                                                                  ],
+                                                                  [
+                                                                      26.0,
+                                                                      -33.0
+                                                                  ],
+                                                                  [
+                                                                      26.0,
+                                                                      -34.25
+                                                                  ],
+                                                                  [
+                                                                      24.0,
+                                                                      -34.25
+                                                                  ]
+                                                              ]
+                                                          ]
+                                      }
+                     }
+                 ]
+}

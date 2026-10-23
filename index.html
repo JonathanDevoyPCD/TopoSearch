@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#18231f">
+    <title>TopoSearch | Loerie map explorer</title>
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+      crossorigin=""
+    >
+    <link rel="stylesheet" href="style.css">
+  </head>
+  <body>
+    <header class="app-header">
+      <div>
+        <p class="eyebrow">TOPOSEARCH</p>
+        <h1>Loerie map explorer</h1>
+        <p class="subtitle">Topographic sheets around 3325CC · Eastern Cape, South Africa</p>
+      </div>
+      <button class="sheet-badge" type="button" id="focus-sheet">
+        <strong id="selected-sheet">3325CC</strong>
+        <span id="selected-sheet-name">Loerie</span>
+      </button>
+    </header>
+
+    <main>
+      <section class="toolbar" aria-label="Map controls">
+        <label>
+          Map layer
+          <select id="map-layer">
+            <option value="50k">1:50 000 topographic</option>
+            <option value="250k">1:250 000 topographic</option>
+          </select>
+        </label>
+        <label>
+          Tile source
+          <select id="tile-source">
+            <option value="online">Online NGI tiles</option>
+            <option value="offline">Local offline tiles</option>
+          </select>
+        </label>
+        <label class="checkbox-label">
+          <input id="sheet-index" type="checkbox" checked>
+          Sheet boundaries
+        </label>
+        <button class="print-button" id="print-map" type="button" disabled>
+          <svg aria-hidden="true" viewBox="0 0 24 24">
+            <path d="M7 8V3h10v5M7 17H5a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2M7 14h10v7H7z"></path>
+            <path d="M17 11h.01"></path>
+          </svg>
+          <span>Download print PDF</span>
+        </button>
+        <button class="cancel-button" id="cancel-print" type="button" hidden>Cancel</button>
+        <p id="map-status" class="status" role="status" aria-live="polite">
+          Loading map sheets…
+        </p>
+      </section>
+
+      <div id="map" aria-label="Interactive topographic map centered on Loerie"></div>
+
+      <footer class="app-footer">
+        <p>
+          Map imagery: State Copyright, Chief Directorate: National Geo-spatial Information (NGI).
+          Use the online service or locally supplied tiles only under the applicable NGI terms.
+        </p>
+        <p class="coordinates">Cursor: <output id="coordinates">—</output></p>
+      </footer>
+    </main>
+
+    <script
+      src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+      integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+      crossorigin=""
+    ></script>
+    <script src="app.js"></script>
+  </body>
+</html>
