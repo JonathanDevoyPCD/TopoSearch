@@ -15,6 +15,15 @@ node .\serve.js
 Open <http://127.0.0.1:8000>. The local server serves the sheet index, so don't
 open `index.html` directly from the filesystem.
 
+## GitHub Pages
+
+The static viewer can be hosted from the repository's `main` branch root. The
+online layers and sheet selection work on GitHub Pages. Direct PDF downloads
+require the included Node server because the NGI tile host does not allow
+browser canvas access from a different origin; run `node .\serve.js` locally
+to enable the download button. The Pages viewer disables that button and
+displays this instruction.
+
 ## Map coverage and sources
 
 - The online 1:50,000 and 1:250,000 layers are served by the

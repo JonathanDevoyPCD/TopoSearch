@@ -11,6 +11,8 @@ const TILE_SIZE = 256;
 const EARTH_RADIUS_METERS = 6378137;
 const NATIVE_ZOOM = { "50k": 15, "250k": 12 };
 const MAP_SCALE = { "50k": 50000, "250k": 250000 };
+const IS_GITHUB_PAGES =
+  window.location.hostname.endsWith(".github.io") && window.location.hostname !== "localhost";
 
 const statusElement = document.querySelector("#map-status");
 const layerSelect = document.querySelector("#map-layer");
@@ -112,7 +114,7 @@ function updateSelectedSheetDetails() {
   }
   selectedSheetElement.textContent = selectedSheet.properties.s;
   selectedSheetNameElement.textContent = sheetName(selectedSheet);
-  printButton.disabled = Boolean(printController);
+  printButton.disabled = Boolean(printController) || IS_GITHUB_PAGES;
 }
 
 function renderSheetLayer() {
@@ -182,8 +184,12 @@ async function loadSheetIndex() {
     }
     updateSelectedSheetDetails();
     renderSheetLayer();
+    const selectedDetails =
+      `Selected ${selectedSheet.properties.s}, edition ${selectedSheet.properties.e} (${selectedSheet.properties.y}).`;
     setStatus(
-      `Sheet index loaded. Selected ${selectedSheet.properties.s}, edition ${selectedSheet.properties.e} (${selectedSheet.properties.y}).`
+      IS_GITHUB_PAGES
+        ? `Online map ready. ${selectedDetails} For PDF downloads, run node .\\serve.js locally.`
+        : `Sheet index loaded. ${selectedDetails}`
     );
   } catch (error) {
     setStatus(`Could not load the local sheet index: ${error.message}`, "error");
@@ -587,3 +593,6 @@ cancelPrintButton.addEventListener("click", () => {
 
 replaceTileLayer();
 loadSheetIndex();
+if (IS_GITHUB_PAGES) {
+  printButton.title = "Run node .\\serve.js locally to download print PDFs.";
+}
