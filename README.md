@@ -17,12 +17,32 @@ open `index.html` directly from the filesystem.
 
 ## GitHub Pages
 
-The static viewer can be hosted from the repository's `main` branch root. The
-online layers and sheet selection work on GitHub Pages. Direct PDF downloads
-require the included Node server because the NGI tile host does not allow
-browser canvas access from a different origin; run `node .\serve.js` locally
-to enable the download button. The Pages viewer disables that button and
-displays this instruction.
+The static viewer is hosted from the repository's `main` branch root at
+<https://jonathandevoypcd.github.io/TopoSearch/>. Online layers and sheet
+selection work there. The hosted PDF download uses the Cloudflare Worker
+defined in `worker/index.js`; deploy it once with the steps below.
+
+### Deploy the Cloudflare tile proxy
+
+1. Sign in to Cloudflare and complete Workers onboarding at
+   <https://dash.cloudflare.com/?to=/:account/workers-and-pages>. Register the
+   free `workers.dev` subdomain when prompted; no custom domain is needed.
+2. Install dependencies with `npm install`.
+3. Run `npx wrangler login` and authorize Wrangler in the same Cloudflare account.
+4. Run `npm run worker:deploy`. Wrangler prints the public `workers.dev` URL.
+5. Copy that URL into `PDF_WORKER_BASE_URL` near the top of `app.js`, without a
+   trailing slash, then commit and push the change. GitHub Pages will redeploy.
+6. Open the Pages site and download a PDF to verify the Worker is connected.
+
+The Worker only accepts `GET`, `HEAD`, and CORS preflight requests from this
+GitHub Pages origin. It only proxies PNG tiles from the fixed NGI host, for the
+supported map layers and zoom levels, within the Loerie-area bounding box. It
+does not accept arbitrary upstream URLs. Tile responses are cached by the
+browser for one day. Workers Free currently includes 100,000 requests per day;
+one full 50k sheet can request several hundred tiles. Monitor usage in the
+Cloudflare dashboard, and confirm NGI terms permit this use before sharing PDFs.
+
+Local PDF generation continues to use `node .\serve.js`.
 
 ## Map coverage and sources
 

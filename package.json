@@ -1,0 +1,13 @@
+{
+  "name": "toposearch",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "worker:dev": "wrangler dev",
+    "worker:deploy": "wrangler deploy",
+    "test:worker": "node --test"
+  },
+  "devDependencies": {
+    "wrangler": "4.152.0"
+  }
+}

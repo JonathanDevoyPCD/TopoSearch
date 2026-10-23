@@ -11,6 +11,7 @@ const TILE_SIZE = 256;
 const EARTH_RADIUS_METERS = 6378137;
 const NATIVE_ZOOM = { "50k": 15, "250k": 12 };
 const MAP_SCALE = { "50k": 50000, "250k": 250000 };
+const PDF_WORKER_BASE_URL = "";
 const IS_GITHUB_PAGES =
   window.location.hostname.endsWith(".github.io") && window.location.hostname !== "localhost";
 
@@ -114,7 +115,7 @@ function updateSelectedSheetDetails() {
   }
   selectedSheetElement.textContent = selectedSheet.properties.s;
   selectedSheetNameElement.textContent = sheetName(selectedSheet);
-  printButton.disabled = Boolean(printController) || IS_GITHUB_PAGES;
+  printButton.disabled = Boolean(printController) || (IS_GITHUB_PAGES && !PDF_WORKER_BASE_URL);
 }
 
 function renderSheetLayer() {
@@ -187,8 +188,8 @@ async function loadSheetIndex() {
     const selectedDetails =
       `Selected ${selectedSheet.properties.s}, edition ${selectedSheet.properties.e} (${selectedSheet.properties.y}).`;
     setStatus(
-      IS_GITHUB_PAGES
-        ? `Online map ready. ${selectedDetails} For PDF downloads, run node .\\serve.js locally.`
+      IS_GITHUB_PAGES && !PDF_WORKER_BASE_URL
+        ? `Online map ready. ${selectedDetails} ${PDF_WORKER_BASE_URL ? "PDF downloads use the Cloudflare Worker." : "Deploy the Cloudflare Worker and configure its URL to enable PDF downloads."}`
         : `Sheet index loaded. ${selectedDetails}`
     );
   } catch (error) {
@@ -244,6 +245,9 @@ function tileSourceUrl(layerName, zoom, x, y, tileSource) {
   const tmsRow = 2 ** zoom - 1 - y;
   if (tileSource === "offline") {
     return `${LOCAL_TILE_ROOT}/${layerName}/${zoom}/${x}/${tmsRow}.png`;
+  }
+  if (IS_GITHUB_PAGES) {
+    return `${PDF_WORKER_BASE_URL}/${layerName}/${zoom}/${x}/${tmsRow}.png`;
   }
   return `/ngi-proxy/${layerName}/${zoom}/${x}/${tmsRow}.png`;
 }
@@ -593,6 +597,6 @@ cancelPrintButton.addEventListener("click", () => {
 
 replaceTileLayer();
 loadSheetIndex();
-if (IS_GITHUB_PAGES) {
-  printButton.title = "Run node .\\serve.js locally to download print PDFs.";
+if (IS_GITHUB_PAGES && !PDF_WORKER_BASE_URL) {
+  printButton.title = "Deploy the Cloudflare Worker and configure its URL to enable PDF downloads.";
 }
