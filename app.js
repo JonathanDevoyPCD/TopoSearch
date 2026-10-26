@@ -1,3 +1,5 @@
+import { magvar, MODEL_EPOCH, MODEL_VALID_UNTIL } from "./vendor/magvar/magvar.js";
+
 const NGI_ROOT = "https://htonl.dev.openstreetmap.org/ngi-tiles";
 const LOCAL_TILE_ROOT = "./tiles";
 const SHEET_INDEX_URLS = {
@@ -374,65 +376,330 @@ function makePdfContent({
   mapHeight,
   lines,
   scale,
-  centerLatitude
+  sheetIndexFeatures,
+  selectedFeature,
+  layerName
 }) {
   const commands = [];
-  const text = (value, x, y, size, font = "F1") => {
+  const text = (value, x, y, size, font = "F1", color = "0 0 0") => {
     commands.push(
-      `BT /${font} ${size.toFixed(2)} Tf ${mmToPt(x).toFixed(2)} ${mmToPt(pageHeight - y).toFixed(2)} Td (${pdfEscape(value)}) Tj ET`
+      `${color} rg BT /${font} ${size.toFixed(2)} Tf ${mmToPt(x).toFixed(2)} ${mmToPt(pageHeight - y).toFixed(2)} Td (${pdfEscape(value)}) Tj ET`
     );
   };
-  const line = (x1, y1, x2, y2, width = 0.3) => {
+  const textWidth = (value, size) => value.length * size * 0.176;
+  const centeredText = (value, centerX, y, size, font = "F1", color = "0 0 0") => {
+    text(value, centerX - textWidth(value, size) / 2, y, size, font, color);
+  };
+  const line = (x1, y1, x2, y2, width = 0.3, color = "0 0 0", dash = "[] 0 d") => {
     commands.push(
-      `${mmToPt(width).toFixed(2)} w ${mmToPt(x1).toFixed(2)} ${mmToPt(pageHeight - y1).toFixed(2)} m ${mmToPt(x2).toFixed(2)} ${mmToPt(pageHeight - y2).toFixed(2)} l S`
+      `${dash} ${color} RG ${mmToPt(width).toFixed(2)} w ${mmToPt(x1).toFixed(2)} ${mmToPt(pageHeight - y1).toFixed(2)} m ${mmToPt(x2).toFixed(2)} ${mmToPt(pageHeight - y2).toFixed(2)} l S`
     );
+  };
+  const rectangle = (x, y, width, height, stroke = "0 0 0", fill = null, strokeWidth = 0.25) => {
+    const path =
+      `${mmToPt(x).toFixed(2)} ${mmToPt(pageHeight - y - height).toFixed(2)} ` +
+      `${mmToPt(width).toFixed(2)} ${mmToPt(height).toFixed(2)} re`;
+    if (fill) {
+      commands.push(`${fill} rg ${path} f`);
+    }
+    commands.push(`${stroke} RG ${mmToPt(strokeWidth).toFixed(2)} w ${path} S`);
   };
 
-  text(lines.title, 16, 17, 18, "F2");
-  text(lines.subtitle, 16, 25, 9);
-  text(lines.extent, 16, 32, 7.5);
-  text(
-    `${lines.scaleText} at center latitude ${centerLatitude.toFixed(4)} degrees. Full-size print required.`,
-    16,
-    38,
-    7.5
-  );
-  text(`Source raster zoom: ${lines.sourceZoom} (maximum available)`, 16, 44, 7);
+  const margin = 14;
+  text(lines.scaleHeader, margin, 19, 10, "F2");
+  text("SOUTH AFRICA | TOPOGRAPHIC", margin, 27, 6.5);
+  centeredText(lines.title.toUpperCase(), pageWidth / 2, 24, 17, "F2");
+  rectangle(pageWidth - 93, 9, 79, 22, "0.25 0.25 0.25");
+  text(`SHEET ${lines.sheet}`, pageWidth - 89, 17, 7, "F2");
+  text(`EDITION ${lines.edition} | ${lines.year}`, pageWidth - 89, 25, 6.5);
+  line(margin, 39, pageWidth - margin, 39, 0.35);
+
   commands.push("q 0.25 w 0 0 0 RG");
   commands.push(
-    `${mmToPt(mapWidth).toFixed(2)} 0 0 ${mmToPt(mapHeight).toFixed(2)} ${mmToPt(mapX).toFixed(2)} ${mmToPt(mapY).toFixed(2)} cm /Im0 Do Q`
+    `${mmToPt(mapWidth).toFixed(2)} 0 0 ${mmToPt(mapHeight).toFixed(2)} ${mmToPt(mapX).toFixed(2)} ${mmToPt(pageHeight - mapY - mapHeight).toFixed(2)} cm /Im0 Do Q`
   );
-  commands.push("0.3 w 0 0 0 RG");
-  commands.push(
-    `${mmToPt(mapX).toFixed(2)} ${mmToPt(mapY).toFixed(2)} ${mmToPt(mapWidth).toFixed(2)} ${mmToPt(mapHeight).toFixed(2)} re S`
-  );
+  rectangle(mapX, mapY, mapWidth, mapHeight, "0 0 0", null, 0.4);
 
-  const scaleLengthKm = scale === 50000 ? 5 : 10;
+  const coordinateTicks = (min, max, interval) => {
+    const values = [min];
+    for (
+      let value = Math.ceil(min / interval - 1e-8) * interval;
+      value < max - 1e-8;
+      value += interval
+    ) {
+      if (value > min + 1e-8) {
+        values.push(value);
+      }
+    }
+    if (max - values[values.length - 1] > 1e-8) {
+      values.push(max);
+    }
+    return values;
+  };
+  const axisLabel = (value, positive, negative) => {
+    const absolute = Math.abs(value);
+    const degrees = Math.floor(absolute + 1e-8);
+    const minutes = Math.round((absolute - degrees) * 60);
+    return `${degrees} ${String(minutes).padStart(2, "0")} ${value >= 0 ? positive : negative}`;
+  };
+  const longitudeInterval = (lines.bounds.east - lines.bounds.west) > 1 ? 0.5 : 5 / 60;
+  const latitudeInterval = (lines.bounds.north - lines.bounds.south) > 1 ? 0.25 : 5 / 60;
+  coordinateTicks(lines.bounds.west, lines.bounds.east, longitudeInterval).forEach((longitude) => {
+    const x = mapX + ((longitude - lines.bounds.west) / (lines.bounds.east - lines.bounds.west)) * mapWidth;
+    line(x, mapY, x, mapY - 3, 0.2);
+    line(x, mapY + mapHeight, x, mapY + mapHeight + 3, 0.2);
+    centeredText(axisLabel(longitude, "E", "W"), x, mapY - 5, 5.5);
+    centeredText(axisLabel(longitude, "E", "W"), x, mapY + mapHeight + 9, 5.5);
+  });
+  const northMercator = mercatorY(lines.bounds.north);
+  const southMercator = mercatorY(lines.bounds.south);
+  coordinateTicks(lines.bounds.south, lines.bounds.north, latitudeInterval).forEach((latitude) => {
+    const y = mapY + ((northMercator - mercatorY(latitude)) / (northMercator - southMercator)) * mapHeight;
+    line(mapX, y, mapX - 3, y, 0.2);
+    line(mapX + mapWidth, y, mapX + mapWidth + 3, y, 0.2);
+    const label = axisLabel(latitude, "N", "S");
+    text(label, mapX - textWidth(label, 5.5) - 5, y + 1.8, 5.5);
+    text(label, mapX + mapWidth + 5, y + 1.8, 5.5);
+  });
+
+  const compassWidth = Math.min(86, mapX - 24);
+  const compassX = (mapX - compassWidth) / 2;
+  const compassY = mapY + mapHeight / 2 - 34;
+  rectangle(compassX, compassY, compassWidth, 68, "0.35 0.35 0.35", "0.98 0.98 0.96");
+  centeredText("NORTH REFERENCE", mapX / 2, compassY + 7, 6, "F2");
+  const arrowCenterX = mapX / 2;
+  const arrowCenterY = compassY + 37;
+  const arrowLength = Math.min(18, compassWidth * 0.23);
+  const declinationRadians = (lines.declination * Math.PI) / 180;
+  const drawArrow = (angle, color, label) => {
+    const tipX = arrowCenterX + Math.sin(angle) * arrowLength;
+    const tipY = arrowCenterY - Math.cos(angle) * arrowLength;
+    line(arrowCenterX, arrowCenterY, tipX, tipY, 0.7, color);
+    line(
+      tipX,
+      tipY,
+      tipX - Math.sin(angle - 2.55) * 3,
+      tipY + Math.cos(angle - 2.55) * 3,
+      0.7,
+      color
+    );
+    line(
+      tipX,
+      tipY,
+      tipX - Math.sin(angle + 2.55) * 3,
+      tipY + Math.cos(angle + 2.55) * 3,
+      0.7,
+      color
+    );
+    text(label, tipX - 2, tipY - 2, 5.5, "F2", color);
+  };
+  drawArrow(0, "0 0 0", "T/G");
+  drawArrow(declinationRadians, "0.72 0.12 0.08", "M");
+  centeredText(lines.declinationLabel, mapX / 2, compassY + 52, 5.5);
+  centeredText("True / grid and magnetic north", mapX / 2, compassY + 60, 5);
+
+  const legendTop = mapY + mapHeight + 14;
+  line(margin, legendTop, pageWidth - margin, legendTop, 0.35);
+  centeredText("REFERENCE / VERKLARING", pageWidth / 2, legendTop + 7, 8, "F2");
+  const legendColumns = [
+    [
+      ["International boundaries", "Internasionale grense", "boundary", "0 0 0"],
+      ["Provincial boundaries", "Provinsiale grense", "boundary", "0.25 0.25 0.25"],
+      ["Multiple track railways", "Veelvuldige spoorlyne", "rail", "0.1 0.1 0.1"],
+      ["Single track railways", "Enkelspoorlyne", "rail", "0.1 0.1 0.1"],
+      ["Electrified railways", "Geelektrifiseerde spoorlyne", "rail", "0.15 0.15 0.15"],
+      ["Narrow gauge railways", "Smalspoorlyne", "rail", "0.2 0.2 0.2"],
+      ["Service and mineral railways", "Diens- en mineraalspoorlyne", "rail", "0.25 0.25 0.25"],
+      ["National roads", "Nasionale paaie", "road", "0.72 0.12 0.08"],
+      ["Main roads", "Hoofpaaie", "road", "0.78 0.25 0.12"],
+      ["Secondary roads", "Sekondere paaie", "road", "0.82 0.45 0.18"],
+      ["Other roads", "Ander paaie", "road", "0.35 0.3 0.25"],
+      ["Tracks and footpaths", "Dowwe paaie en voetpaaie", "dotted", "0.42 0.38 0.32"],
+      ["Power lines", "Kraglyne", "line", "0.2 0.2 0.2"],
+      ["Telephone and telegraph lines", "Telefoon- en telegraaflyne", "dotted", "0.25 0.25 0.25"],
+      ["Public services and buildings", "Openbare dienste en geboue", "point", "0.18 0.18 0.18"],
+      ["Lighthouses and marine lights", "Vuurtorings en seevaartligte", "point", "0.72 0.12 0.08"],
+      ["Marine and trig beacons", "Seevaart- en driehoeksbakens", "point", "0.18 0.18 0.18"]
+    ],
+    [
+      ["Magnetic stations and ground signs", "Magnetiese stasies en grondtekens", "point", "0.18 0.18 0.18"],
+      ["Monuments", "Monumente", "point", "0.18 0.18 0.18"],
+      ["Dipping tanks and windmills", "Dipbakke en windpompe", "point", "0.2 0.2 0.2"],
+      ["Stone and anti-erosion walls", "Klip- en grondbewaringswalle", "line", "0.4 0.32 0.22"],
+      ["Excavations", "Uitgrawings", "dotted", "0.5 0.34 0.2"],
+      ["Perennial water", "Standhoudende water", "water", "0.12 0.42 0.72"],
+      ["Non-perennial water", "Nie-standhoudende water", "dotted", "0.12 0.42 0.72"],
+      ["Dry pans", "Droe panne", "dotted", "0.36 0.57 0.7"],
+      ["Springs, fountains and wells", "Fonteine, watergate en putte", "point", "0.12 0.42 0.72"],
+      ["Marshes, swamps and vleis", "Moerasse en vleie", "water", "0.12 0.48 0.66"],
+      ["Pipelines", "Pyplyne", "dashed", "0.12 0.42 0.72"],
+      ["Prominent rock outcrops", "Uitstaande klipbanke", "dotted", "0.62 0.38 0.16"],
+      ["Terraces", "Terrasse", "dotted", "0.72 0.45 0.12"],
+      ["Cultivated lands", "Bewerkte lande", "dotted", "0.18 0.55 0.24"],
+      ["Orchards and vineyards", "Boorde en wingerde", "dotted", "0.18 0.55 0.24"],
+      ["Trees and bush", "Bome en bos", "dotted", "0.12 0.42 0.2"]
+    ]
+  ];
+  const columnGap = 14;
+  const columnWidth = (pageWidth - 2 * margin - columnGap) / 2;
+  const rowStart = legendTop + 15;
+  const rowHeight = 4.15;
+  legendColumns.forEach((entries, columnIndex) => {
+    const x = margin + columnIndex * (columnWidth + columnGap);
+    entries.forEach(([english, afrikaans, kind, color], rowIndex) => {
+      const y = rowStart + rowIndex * rowHeight;
+      text(english, x + 2, y, 6);
+      const symbolX = x + columnWidth * 0.54;
+      const symbolWidth = 16;
+      if (kind === "rail") {
+        line(symbolX, y - 1.6, symbolX + symbolWidth, y - 1.6, 0.45, color);
+        line(symbolX, y - 0.4, symbolX + symbolWidth, y - 0.4, 0.45, color);
+        for (let tick = 1; tick < 8; tick += 1) {
+          const tickX = symbolX + (symbolWidth * tick) / 8;
+          line(tickX, y - 1.8, tickX, y - 0.2, 0.25, color);
+        }
+      } else if (kind === "point") {
+        line(symbolX + 5, y - 1.1, symbolX + 11, y - 1.1, 0.6, color);
+        line(symbolX + 8, y - 2.7, symbolX + 8, y + 0.5, 0.6, color);
+        line(symbolX + 6.8, y - 2.3, symbolX + 9.2, y + 0.1, 0.35, color);
+      } else {
+        const dash = kind === "boundary" || kind === "dotted"
+          ? "[1 1] 0 d"
+          : kind === "dashed"
+            ? "[3 2] 0 d"
+            : "[] 0 d";
+        line(symbolX, y - 1, symbolX + symbolWidth, y - 1, kind === "road" ? 0.9 : 0.55, color, dash);
+        if (kind === "water" || kind === "road") {
+          line(symbolX, y + 0.1, symbolX + symbolWidth, y + 0.1, 0.25, color);
+        }
+      }
+      text(afrikaans, symbolX + symbolWidth + 3, y, 6);
+    });
+  });
+  const dividerX = margin + columnWidth + columnGap / 2;
+  line(dividerX, legendTop + 10, dividerX, legendTop + 88, 0.2, "0.65 0.65 0.65");
+
+  const detailsTop = legendTop + 94;
+  line(margin, detailsTop, pageWidth - margin, detailsTop, 0.35);
+  text("SCALE / SKAAL", margin + 2, detailsTop + 8, 6.5, "F2");
+  text(`1:${scale.toLocaleString("en-US")}`, margin + 2, detailsTop + 16, 8, "F2");
+  text("Print at 100% / actual size.", margin + 2, detailsTop + 25, 5.7);
+  text("Do not use 'fit to page'.", margin + 2, detailsTop + 32, 5.7);
+  const scaleLengthKm = scale === 50000 ? 5 : 20;
+  const scaleSegments = scale === 50000 ? 5 : 4;
   const scaleLengthMm = (scaleLengthKm * 1000000) / scale;
-  const barX = 16;
-  const barY = 50;
-  const segment = scaleLengthMm / 2;
-  commands.push(
-    `0 0 0 rg ${mmToPt(barX).toFixed(2)} ${mmToPt(pageHeight - barY - 2).toFixed(2)} ${mmToPt(segment).toFixed(2)} ${mmToPt(2).toFixed(2)} re f`
-  );
-  commands.push(
-    `1 1 1 rg ${mmToPt(barX + segment).toFixed(2)} ${mmToPt(pageHeight - barY - 2).toFixed(2)} ${mmToPt(segment).toFixed(2)} ${mmToPt(2).toFixed(2)} re f`
-  );
-  commands.push("0 0 0 RG");
-  line(barX, barY - 1, barX + scaleLengthMm, barY - 1, 0.25);
-  text("0", barX, barY + 3, 6);
-  text(`${scaleLengthKm} km`, barX + scaleLengthMm - 13, barY + 3, 6);
-  text("N", pageWidth - 19, barY + 1, 8, "F2");
-  line(pageWidth - 16, barY - 1, pageWidth - 16, barY - 8, 0.5);
-  line(pageWidth - 16, barY - 8, pageWidth - 18, barY - 5, 0.5);
-  line(pageWidth - 16, barY - 8, pageWidth - 14, barY - 5, 0.5);
+  const barX = margin + 2;
+  const barY = detailsTop + 47;
+  const segmentWidth = scaleLengthMm / scaleSegments;
+  const distancePerSegment = scaleLengthKm / scaleSegments;
+  for (let segmentIndex = 0; segmentIndex < scaleSegments; segmentIndex += 1) {
+    rectangle(
+      barX + segmentIndex * segmentWidth,
+      barY,
+      segmentWidth,
+      2.2,
+      "0 0 0",
+      segmentIndex % 2 === 0 ? "0 0 0" : "1 1 1",
+      0.2
+    );
+    if (segmentIndex + 1 < scaleSegments) {
+      centeredText(
+        `${(segmentIndex + 1) * distancePerSegment}`,
+        barX + (segmentIndex + 1) * segmentWidth,
+        barY + 7,
+        5
+      );
+    }
+  }
+  text("0", barX - 1, barY + 7, 5);
+  text(`${scaleLengthKm} km`, barX + scaleLengthMm + 2, barY + 7, 5);
 
-  const footerY = pageHeight - 22;
-  line(16, footerY - 7, pageWidth - 16, footerY - 7, 0.25);
-  text(lines.attribution, 16, footerY, 6.5);
-  text(lines.source, 16, footerY + 5, 6.5);
-  text(lines.safety, 16, footerY + 10, 6.5);
-  text(lines.generated, pageWidth - 75, footerY, 6.5);
+  const indexWidth = Math.min(128, pageWidth * 0.23);
+  const indexX = (pageWidth - indexWidth) / 2;
+  const indexY = detailsTop + 6;
+  text("INDEX TO SHEETS / INDEKS VAN VELLE", indexX, indexY + 2, 5.8, "F2");
+  const cellSize = 0.25;
+  const gridColumns = layerName === "50k"
+    ? 3
+    : Math.max(1, Math.round((lines.bounds.east - lines.bounds.west) / cellSize));
+  const gridRows = layerName === "50k"
+    ? 3
+    : Math.max(1, Math.round((lines.bounds.north - lines.bounds.south) / cellSize));
+  const gridWidth = indexWidth - 4;
+  const gridHeight = 34;
+  const cellWidth = gridWidth / gridColumns;
+  const cellHeight = gridHeight / gridRows;
+  let gridWest;
+  let gridNorth;
+  if (layerName === "50k") {
+    const selectedBounds = boundsForFeature(selectedFeature);
+    const centerLongitude = (selectedBounds.west + selectedBounds.east) / 2;
+    const centerLatitude = (selectedBounds.south + selectedBounds.north) / 2;
+    gridWest = centerLongitude - (gridColumns * cellSize) / 2;
+    gridNorth = centerLatitude + (gridRows * cellSize) / 2;
+  } else {
+    gridWest = lines.bounds.west;
+    gridNorth = lines.bounds.north;
+  }
+  const gridX = indexX + 2;
+  const gridY = indexY + 7;
+  for (let row = 0; row < gridRows; row += 1) {
+    for (let column = 0; column < gridColumns; column += 1) {
+      rectangle(
+        gridX + column * cellWidth,
+        gridY + row * cellHeight,
+        cellWidth,
+        cellHeight,
+        "0.35 0.35 0.35",
+        "1 1 1",
+        0.2
+      );
+    }
+  }
+  sheetIndexFeatures.forEach((feature) => {
+    const featureBounds = boundsForFeature(feature);
+    const centerLongitude = (featureBounds.west + featureBounds.east) / 2;
+    const centerLatitude = (featureBounds.south + featureBounds.north) / 2;
+    const column = Math.floor((centerLongitude - gridWest) / cellSize);
+    const row = Math.floor((gridNorth - centerLatitude) / cellSize);
+    if (column < 0 || column >= gridColumns || row < 0 || row >= gridRows) {
+      return;
+    }
+    const x = gridX + column * cellWidth;
+    const y = gridY + row * cellHeight;
+    const isSelected = layerName === "50k" && feature.properties.s === lines.sheet;
+    if (isSelected) {
+      rectangle(x, y, cellWidth, cellHeight, "0.72 0.12 0.08", "0.96 0.88 0.78", 0.5);
+    }
+    centeredText(
+      feature.properties.s,
+      x + cellWidth / 2,
+      y + cellHeight / 2 + (layerName === "50k" ? 1.7 : 1.3),
+      layerName === "50k" ? 5 : 3.8,
+      isSelected ? "F2" : "F1"
+    );
+  });
+  if (layerName === "250k") {
+    rectangle(gridX, gridY, gridWidth, gridHeight, "0.72 0.12 0.08", null, 0.55);
+    centeredText(lines.sheet, gridX + gridWidth / 2, gridY + gridHeight + 6, 5.5, "F2");
+  }
+
+  const detailX = pageWidth - margin - 211;
+  const detailY = detailsTop + 8;
+  const detailLines = [
+    lines.subtitle,
+    lines.extent,
+    `${lines.source} | Native raster zoom ${lines.sourceZoom}`,
+    "Coordinate frame: WGS84 latitude / longitude | Image projection: Web Mercator",
+    `Magnetic declination: ${lines.declinationLabel} (${lines.declinationModel})`,
+    lines.attribution,
+    lines.generated
+  ];
+  detailLines.forEach((value, index) => {
+    text(value, detailX, detailY + index * 8, 5.8);
+  });
+  text(lines.legendNote, detailX, detailY + detailLines.length * 8, 5.8);
+  text(lines.safety, detailX, detailY + (detailLines.length + 1) * 8, 5.8);
 
   return commands.join("\n");
 }
@@ -488,25 +755,44 @@ function formatCoordinate(value, positive, negative) {
   return `${Math.abs(value).toFixed(5)} ${value >= 0 ? positive : negative}`;
 }
 
-function buildPrintLines(feature, layerName, tileSource, bounds) {
+function buildPrintLines(feature, layerName, tileSource, bounds, generatedAt) {
   const { s: sheet, e: edition, y: year } = feature.properties;
   const scale = MAP_SCALE[layerName];
   const scaleLabel = layerName === "50k" ? "50 000" : "250 000";
   const centerLatitude = (bounds.north + bounds.south) / 2;
+  const centerLongitude = (bounds.west + bounds.east) / 2;
+  if (
+    generatedAt.getUTCFullYear() < MODEL_EPOCH ||
+    generatedAt.getUTCFullYear() >= MODEL_VALID_UNTIL
+  ) {
+    throw new Error(
+      `Magnetic declination requires a supported WMM2025 date from ${MODEL_EPOCH} through ${MODEL_VALID_UNTIL - 1}.`
+    );
+  }
+  const declination = magvar(centerLatitude, centerLongitude, 0, generatedAt);
+  const declinationDirection = declination >= 0 ? "E" : "W";
   const source = tileSource === "online" ? "Online NGI tiles" : "Local offline tiles";
-  const timestamp = new Date().toISOString().replace("T", " ").replace(/\.\d{3}Z$/, " UTC");
+  const timestamp = generatedAt.toISOString().replace("T", " ").replace(/\.\d{3}Z$/, " UTC");
   return {
     centerLatitude,
     scale,
     sourceZoom: NATIVE_ZOOM[layerName],
-    title: `Sheet ${sheet}${sheetName(feature) ? ` - ${sheetName(feature)}` : ""}`,
+    title: `${sheet}${sheetName(feature) ? ` - ${sheetName(feature)}` : ""}`,
     subtitle: `NGI 1:${scaleLabel} topographic map | Edition ${edition} (${year})`,
     extent:
       `Extent: ${formatCoordinate(bounds.west, "E", "W")} to ${formatCoordinate(bounds.east, "E", "W")}, ` +
       `${formatCoordinate(bounds.south, "N", "S")} to ${formatCoordinate(bounds.north, "N", "S")}`,
-    scaleText: `Nominal scale 1:${scale.toLocaleString("en-US")}`,
+    bounds,
+    sheet,
+    edition,
+    year,
+    scaleHeader: `1:${scaleLabel}`,
+    declination,
+    declinationLabel: `${Math.abs(declination).toFixed(2)} degrees ${declinationDirection}`,
+    declinationModel: `WMM2025 ${generatedAt.toISOString().slice(0, 10)}`,
     attribution: "State Copyright - Chief Directorate: National Geo-spatial Information (NGI).",
     source: `Tile source: ${source} | htonl.dev.openstreetmap.org/ngi-tiles/`,
+    legendNote: "Reference symbols are generalized; check source-edition symbology.",
     safety: "Verify map currency and local conditions before navigation.",
     generated: `Generated ${timestamp}`
   };
@@ -522,7 +808,8 @@ async function createPrintPdf(feature, layerName, tileSource, signal) {
     tileSource,
     signal
   );
-  const lines = buildPrintLines(feature, layerName, tileSource, bounds);
+  const generatedAt = new Date();
+  const lines = buildPrintLines(feature, layerName, tileSource, bounds, generatedAt);
   const centerLatitude = lines.centerLatitude;
   const cosLatitude = Math.cos((centerLatitude * Math.PI) / 180);
   const westMercator = EARTH_RADIUS_METERS * ((bounds.west * Math.PI) / 180);
@@ -534,7 +821,7 @@ async function createPrintPdf(feature, layerName, tileSource, signal) {
   const pageWidth = layerName === "50k" ? 594 : 1189;
   const pageHeight = 841;
   const mapX = (pageWidth - mapWidth) / 2;
-  const mapY = pageHeight - 65 - mapHeight;
+  const mapY = 62;
   if (mapX < 16 || mapY < 16) {
     throw new Error(`Sheet ${feature.properties.s} does not fit the selected print scale and page.`);
   }
@@ -547,7 +834,9 @@ async function createPrintPdf(feature, layerName, tileSource, signal) {
     mapHeight,
     lines,
     scale: lines.scale,
-    centerLatitude
+    sheetIndexFeatures: sheetCollections["50k"]?.features || [],
+    selectedFeature: feature,
+    layerName
   });
   return assemblePdf(jpeg, imageWidth, imageHeight, pageWidth, pageHeight, content);
 }

@@ -66,8 +66,19 @@ Local PDF generation continues to use `node .\serve.js`.
   printed map area is sized to the selected sheet bounds at the nominal scale,
   with the scale corrected for Web Mercator at the sheet's center latitude.
   Print at 100% / actual size; do not use "fit to page" if the printed scale
-  matters. PDFs include the sheet code, edition/year, geographic extent, scale,
-  tile-source label, generation time, and NGI attribution.
+  matters. PDF borders include coordinate ticks, a bilingual reference key,
+  true/magnetic north references, a scale bar, a neighboring-sheet index, and
+  the selected sheet code, edition/year, geographic extent, tile source,
+  generation time, and NGI attribution. Magnetic declination is calculated at
+  the selected sheet's center for the PDF generation date using the WMM2025
+  model; the calculation is local and does not require an API. WMM2025 is valid
+  through 2029, so the model must be updated before generating PDFs in 2030.
+  The reference key uses generalized symbols based on the supplied example;
+  consult the source map for edition-specific symbology.
+
+  The declination calculation uses the [NOAA/NCEI WMM2025
+  model](https://www.ncei.noaa.gov/products/world-magnetic-model), implemented
+  by `magvar` 2.2.0. Its MIT license is included in `vendor/magvar/LICENSE`.
 
   Online tile export is relayed through the included local server because the
   tile host does not enable cross-origin canvas export. Only tiles required for
