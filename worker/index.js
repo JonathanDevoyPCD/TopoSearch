@@ -2,11 +2,12 @@ const NGI_TILE_ORIGIN = "https://htonl.dev.openstreetmap.org";
 const TILE_PATH = /^\/(50k|250k)\/(\d+)\/(\d+)\/(\d+)\.png$/;
 const MAX_ZOOM = { "50k": 15, "250k": 12 };
 const ALLOWED_AREA = {
-  west: 23.5,
-  east: 26.5,
-  south: -34.75,
-  north: -32.5
+  west: 16,
+  east: 33.5,
+  south: -35,
+  north: -22
 };
+const CACHE_SECONDS = 60 * 60 * 24 * 30;
 
 function corsHeaders(origin) {
   return {
@@ -54,7 +55,7 @@ function intersectsAllowedArea(bounds) {
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const origin = request.headers.get("Origin");
     if (!origin || origin !== env.ALLOWED_ORIGIN) {
       return new Response("Origin not allowed", { status: 403 });
@@ -98,7 +99,27 @@ export default {
       return jsonError("Tile coordinates outside supported zoom range", 400, origin);
     }
     if (!intersectsAllowedArea(tileBounds(zoom, x, tmsRow))) {
-      return jsonError("Tile is outside the Loerie map area", 404, origin);
+      return jsonError("Tile is outside the supported map area", 404, origin);
+    }
+
+    // Per-client limit (Workers Rate Limiting binding, optional). Protects the free quota.
+    if (env.TILE_LIMITER) {
+      const client = request.headers.get("CF-Connecting-IP") || "unknown";
+      const { success } = await env.TILE_LIMITER.limit({ key: client });
+      if (!success) {
+        const limited = jsonError("Too many tile requests. Please wait a minute and try again.", 429, origin);
+        limited.headers.set("Retry-After", "60");
+        return limited;
+      }
+    }
+
+    const cache = request.method === "GET" && typeof caches !== "undefined" ? caches.default : null;
+    const cacheKey = new Request(`${url.origin}${url.pathname}`);
+    if (cache) {
+      const cached = await cache.match(cacheKey);
+      if (cached) {
+        return cached;
+      }
     }
 
     const upstreamUrl =
@@ -123,15 +144,19 @@ export default {
     }
 
     const headers = new Headers(corsHeaders(origin));
-    headers.set("Cache-Control", "public, max-age=86400");
+    headers.set("Cache-Control", `public, max-age=${CACHE_SECONDS}`);
     headers.set("Content-Type", "image/png");
     const contentLength = upstream.headers.get("Content-Length");
     if (contentLength) {
       headers.set("Content-Length", contentLength);
     }
-    return new Response(request.method === "HEAD" ? null : upstream.body, {
+    const response = new Response(request.method === "HEAD" ? null : upstream.body, {
       status: 200,
       headers
     });
+    if (cache && ctx?.waitUntil) {
+      ctx.waitUntil(cache.put(cacheKey, response.clone()));
+    }
+    return response;
   }
 };

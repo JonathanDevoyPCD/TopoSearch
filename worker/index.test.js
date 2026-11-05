@@ -31,7 +31,7 @@ test("allows a valid 50k tile and streams it with the Pages CORS origin", async 
   const response = await worker.fetch(makeRequest("/50k/15/18670/13103.png"), env);
   assert.equal(response.status, 200);
   assert.equal(response.headers.get("Access-Control-Allow-Origin"), origin);
-  assert.equal(response.headers.get("Cache-Control"), "public, max-age=86400");
+  assert.equal(response.headers.get("Cache-Control"), "public, max-age=2592000");
   assert.equal(upstreamUrl, "https://htonl.dev.openstreetmap.org/ngi-tiles/tiles/50k/15/18670/13103.png");
   assert.deepEqual(Array.from(new Uint8Array(await response.arrayBuffer())), [137, 80, 78, 71]);
 });

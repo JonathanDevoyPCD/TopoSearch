@@ -7,7 +7,7 @@ const SHEET_INDEX_URLS = {
   "250k": "./data/sheets-250k.geojson"
 };
 // Matches the Worker's allowed tile area (worker/index.js); PDFs outside it cannot be built on GitHub Pages.
-const PDF_AREA = { west: 23.5, east: 26.5, south: -34.75, north: -32.5 };
+const PDF_AREA = { west: 16, east: 33.5, south: -35, north: -22 };
 // Free Frame size in degrees: the same footprint as a 1:50,000 sheet (portrait on paper);
 // 1:250,000 uses a typical landscape sheet footprint.
 const FRAME_SIZE = { "50k": { width: 0.25, height: 0.25 }, "250k": { width: 2, height: 1 } };
