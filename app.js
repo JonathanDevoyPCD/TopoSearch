@@ -36,15 +36,22 @@ const raceWorldLink = document.querySelector("#race-map-world");
 const map = L.map("map", {
   center: INITIAL_CENTER,
   zoom: INITIAL_ZOOM,
-  minZoom: 4,
+  minZoom: 3,
   maxZoom: 15,
   zoomControl: true
 });
 
 const attribution =
   'State Copyright &copy; Chief Directorate: National Geo-spatial Information (NGI)';
+// NGI tiles exist only for South Africa; the rest of the world uses a faded neutral base map.
+const NGI_COVERAGE = L.latLngBounds([-35.2, 16.2], [-21.9, 33.1]);
+L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  maxZoom: 15,
+  maxNativeZoom: 19,
+  opacity: 0.5,
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+}).addTo(map);
 
-const sheetRenderer = L.canvas({ padding: 0.5 });
 let tileLayer;
 let sheetLayer;
 let sheetCollections = {};
@@ -70,6 +77,7 @@ function createTileLayer() {
     tms: true,
     maxZoom: 15,
     maxNativeZoom: NATIVE_ZOOM[layerName],
+    bounds: NGI_COVERAGE,
     attribution
   });
 }
@@ -113,20 +121,8 @@ function isPdfAvailable(feature) {
   return west >= PDF_AREA.west && east <= PDF_AREA.east && south >= PDF_AREA.south && north <= PDF_AREA.north;
 }
 
-function isDownloadable(feature) {
-  return Boolean(feature.properties.race) || isPdfAvailable(feature);
-}
-
-function styleSheet(feature) {
-  const isSelected = selectedSheet && feature === selectedSheet;
-  const dimmed = !isSelected && !isDownloadable(feature);
-  return {
-    color: isSelected ? "#d14d2a" : "#304539",
-    weight: isSelected ? 3 : 1,
-    opacity: isSelected ? 1 : dimmed ? 0.35 : 0.7,
-    fillColor: isSelected ? "#f0b27e" : "#c8d6a5",
-    fillOpacity: isSelected ? 0.18 : dimmed ? 0.02 : 0.08
-  };
+function styleSheet() {
+  return { color: "#d14d2a", weight: 3, opacity: 1, fillColor: "#f0b27e", fillOpacity: 0.18 };
 }
 
 function formatMegabytes(bytes) {
@@ -166,27 +162,25 @@ function updateSelectedSheetDetails() {
 
 function renderSheetLayer() {
   if (sheetLayer) {
-    sheetLayer.eachLayer((layer) => {
-      layer.closePopup();
-      layer.closeTooltip();
-    });
     map.removeLayer(sheetLayer);
+    sheetLayer = null;
   }
-  const collection = sheetCollections[layerSelect.value];
-  if (!collection) {
-    return;
-  }
-  sheetLayer = L.geoJSON(collection, {
-    renderer: sheetRenderer,
-    style: styleSheet,
-    onEachFeature
-  });
-  if (sheetIndexToggle.checked) {
-    sheetLayer.addTo(map);
+  if (selectedSheet && sheetIndexToggle.checked) {
+    sheetLayer = L.geoJSON(selectedSheet, { style: styleSheet, interactive: false }).addTo(map);
   }
 }
 
-function selectSheet(feature, fit = true) {
+function sheetPopupHtml(feature) {
+  const { s: sheet, e: edition, y: year } = feature.properties;
+  const name = sheetName(feature);
+  const downloads = [isPdfAvailable(feature) && "print PDF", feature.properties.race && "race map"].filter(Boolean);
+  return (
+    `<strong>Sheet ${sheet}${name ? ` · ${name}` : ""}</strong><br>Edition ${edition} (${year})<br>` +
+    (downloads.length ? `Downloads: ${downloads.join(", ")}` : "View only")
+  );
+}
+
+function selectSheet(feature, fit = true, popupLatLng = null) {
   selectedSheet = feature;
   selectedSheets[layerSelect.value] = feature;
   updateSelectedSheetDetails();
@@ -194,20 +188,36 @@ function selectSheet(feature, fit = true) {
   if (fit) {
     map.fitBounds(L.geoJSON(feature).getBounds(), { padding: [32, 32] });
   }
+  if (popupLatLng) {
+    L.popup().setLatLng(popupLatLng).setContent(sheetPopupHtml(feature)).openOn(map);
+  }
   setStatus(`Selected sheet ${feature.properties.s}, edition ${feature.properties.e} (${feature.properties.y}).`);
 }
 
-function onEachFeature(feature, layer) {
-  const { s: sheet, e: edition, y: year } = feature.properties;
-  const name = sheetName(feature);
-  const downloads = [isPdfAvailable(feature) && "print PDF", feature.properties.race && "race map"].filter(Boolean);
-  layer.bindPopup(
-    `<strong>Sheet ${sheet}${name ? ` · ${name}` : ""}</strong><br>Edition ${edition} (${year})<br>` +
-      (downloads.length ? `Downloads: ${downloads.join(", ")}` : "View only")
-  );
-  layer.on("click", () => selectSheet(feature, false));
+function sheetAt(latlng) {
+  const collection = sheetCollections[layerSelect.value];
+  if (!collection) {
+    return null;
+  }
+  let best = null;
+  let bestArea = Infinity;
+  for (const feature of collection.features) {
+    const { west, east, south, north } = boundsForFeature(feature);
+    const area = (east - west) * (north - south);
+    if (latlng.lng >= west && latlng.lng <= east && latlng.lat >= south && latlng.lat <= north && area < bestArea) {
+      best = feature;
+      bestArea = area;
+    }
+  }
+  return best;
 }
 
+map.on("click", (event) => {
+  const feature = sheetAt(event.latlng);
+  if (feature) {
+    selectSheet(feature, false, event.latlng);
+  }
+});
 // Links each 50k sheet to its scanned original. Combined sheets are matched regardless of code order.
 async function attachFullMaps(collection) {
   try {

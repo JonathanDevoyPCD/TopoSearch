@@ -51,9 +51,9 @@ Local PDF generation continues to use `node .\serve.js`.
 - The sheet indexes in `data/sheets-50k.geojson` and `data/sheets-250k.geojson` are copies of the viewer's national
   [`sheet50k.json`](https://htonl.dev.openstreetmap.org/ngi-tiles/sheet50k.json)
   and [`sheet250k.json`](https://htonl.dev.openstreetmap.org/ngi-tiles/sheet250k.json).
-  They record map-sheet identifiers, editions, publication years, and bounds. The whole
-  country is shown; sheets with no available download (neither a race-map scan nor a PDF
-  area) are drawn dimmed and are view-only.
+  They record map-sheet identifiers, editions, publication years, and bounds. Sheets are not drawn as a grid;
+  clicking the map selects the sheet under the cursor and outlines only that one. Outside
+  South Africa, a 50%-opacity OpenStreetMap base layer is shown under the NGI tiles.
 - The htonl viewer identifies its topographic imagery as **State Copyright**,
   Chief Directorate: National Geo-spatial Information (NGI). Tiles are therefore
   not included in this repository. Confirm NGI's current terms and obtain any
