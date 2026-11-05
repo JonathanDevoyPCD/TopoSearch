@@ -3,9 +3,11 @@ import { magvar, MODEL_EPOCH, MODEL_VALID_UNTIL } from "./vendor/magvar/magvar.j
 const NGI_ROOT = "https://htonl.dev.openstreetmap.org/ngi-tiles";
 const LOCAL_TILE_ROOT = "./tiles";
 const SHEET_INDEX_URLS = {
-  "50k": "./data/loerie-sheets.geojson",
-  "250k": "./data/loerie-250k-sheets.geojson"
+  "50k": "./data/sheets-50k.geojson",
+  "250k": "./data/sheets-250k.geojson"
 };
+// Matches the Worker's allowed tile area (worker/index.js); PDFs outside it cannot be built on GitHub Pages.
+const PDF_AREA = { west: 23.5, east: 26.5, south: -34.75, north: -32.5 };
 const FULLMAPS_INDEX_URL = "./data/fullmaps-index.json";
 const TARGET_SHEET = "3325CC";
 const INITIAL_CENTER = [-33.875, 25.125];
@@ -42,6 +44,7 @@ const map = L.map("map", {
 const attribution =
   'State Copyright &copy; Chief Directorate: National Geo-spatial Information (NGI)';
 
+const sheetRenderer = L.canvas({ padding: 0.5 });
 let tileLayer;
 let sheetLayer;
 let sheetCollections = {};
@@ -102,14 +105,27 @@ function sheetName(feature) {
   return feature.properties.s === TARGET_SHEET ? "Loerie" : "";
 }
 
+function isPdfAvailable(feature) {
+  if (!IS_GITHUB_PAGES) {
+    return true;
+  }
+  const { west, east, south, north } = boundsForFeature(feature);
+  return west >= PDF_AREA.west && east <= PDF_AREA.east && south >= PDF_AREA.south && north <= PDF_AREA.north;
+}
+
+function isDownloadable(feature) {
+  return Boolean(feature.properties.race) || isPdfAvailable(feature);
+}
+
 function styleSheet(feature) {
   const isSelected = selectedSheet && feature === selectedSheet;
+  const dimmed = !isSelected && !isDownloadable(feature);
   return {
     color: isSelected ? "#d14d2a" : "#304539",
     weight: isSelected ? 3 : 1,
-    opacity: isSelected ? 1 : 0.7,
+    opacity: isSelected ? 1 : dimmed ? 0.35 : 0.7,
     fillColor: isSelected ? "#f0b27e" : "#c8d6a5",
-    fillOpacity: isSelected ? 0.18 : 0.04
+    fillOpacity: isSelected ? 0.18 : dimmed ? 0.02 : 0.08
   };
 }
 
@@ -143,7 +159,9 @@ function updateSelectedSheetDetails() {
   updateRaceMapButton();
   selectedSheetElement.textContent = selectedSheet.properties.s;
   selectedSheetNameElement.textContent = sheetName(selectedSheet);
-  printButton.disabled = Boolean(printController) || (IS_GITHUB_PAGES && !PDF_WORKER_BASE_URL);
+  const pdfAvailable = isPdfAvailable(selectedSheet);
+  printButton.disabled = Boolean(printController) || (IS_GITHUB_PAGES && !PDF_WORKER_BASE_URL) || !pdfAvailable;
+  printButton.title = pdfAvailable ? "" : "PDF export is not yet available for this area.";
 }
 
 function renderSheetLayer() {
@@ -159,6 +177,7 @@ function renderSheetLayer() {
     return;
   }
   sheetLayer = L.geoJSON(collection, {
+    renderer: sheetRenderer,
     style: styleSheet,
     onEachFeature
   });
@@ -181,13 +200,15 @@ function selectSheet(feature, fit = true) {
 function onEachFeature(feature, layer) {
   const { s: sheet, e: edition, y: year } = feature.properties;
   const name = sheetName(feature);
+  const downloads = [isPdfAvailable(feature) && "print PDF", feature.properties.race && "race map"].filter(Boolean);
   layer.bindPopup(
-    `<strong>Sheet ${sheet}${name ? ` · ${name}` : ""}</strong><br>Edition ${edition} (${year})`
+    `<strong>Sheet ${sheet}${name ? ` · ${name}` : ""}</strong><br>Edition ${edition} (${year})<br>` +
+      (downloads.length ? `Downloads: ${downloads.join(", ")}` : "View only")
   );
   layer.on("click", () => selectSheet(feature, false));
 }
 
-// Links each 50k sheet to its scanned original and adds any scanned sheets missing from the index.
+// Links each 50k sheet to its scanned original. Combined sheets are matched regardless of code order.
 async function attachFullMaps(collection) {
   try {
     const response = await fetch(FULLMAPS_INDEX_URL);
@@ -196,22 +217,13 @@ async function attachFullMaps(collection) {
     }
     const { downloadBase, maps } = await response.json();
     fullMapsBase = downloadBase;
-    const byKey = new Map(collection.features.map((feature) => [feature.properties.s, feature]));
+    const normalize = (key) => key.split("_").sort().join("_");
+    const byKey = new Map(collection.features.map((feature) => [normalize(feature.properties.s), feature]));
     for (const entry of maps) {
-      let feature = byKey.get(entry.key);
-      if (!feature) {
-        const { west, east, south, north } = entry.bounds;
-        feature = {
-          type: "Feature",
-          properties: { s: entry.key, y: entry.year, e: entry.edition },
-          geometry: {
-            type: "Polygon",
-            coordinates: [[[west, south], [west, north], [east, north], [east, south], [west, south]]]
-          }
-        };
-        collection.features.push(feature);
+      const feature = byKey.get(normalize(entry.key));
+      if (feature) {
+        feature.properties.race = entry;
       }
-      feature.properties.race = entry;
     }
   } catch (error) {
     console.warn(`Race map index unavailable: ${error.message}`);

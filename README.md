@@ -48,10 +48,12 @@ Local PDF generation continues to use `node .\serve.js`.
 
 - The online 1:50,000 and 1:250,000 layers are served by the
   [OpenStreetMap htonl NGI tiles viewer](https://htonl.dev.openstreetmap.org/ngi-tiles/).
-- The local sheet indexes are regional extracts of the viewer's
+- The sheet indexes in `data/sheets-50k.geojson` and `data/sheets-250k.geojson` are copies of the viewer's national
   [`sheet50k.json`](https://htonl.dev.openstreetmap.org/ngi-tiles/sheet50k.json)
   and [`sheet250k.json`](https://htonl.dev.openstreetmap.org/ngi-tiles/sheet250k.json).
-  They record map-sheet identifiers, editions, publication years, and bounds.
+  They record map-sheet identifiers, editions, publication years, and bounds. The whole
+  country is shown; sheets with no available download (neither a race-map scan nor a PDF
+  area) are drawn dimmed and are view-only.
 - The htonl viewer identifies its topographic imagery as **State Copyright**,
   Chief Directorate: National Geo-spatial Information (NGI). Tiles are therefore
   not included in this repository. Confirm NGI's current terms and obtain any
