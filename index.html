@@ -54,6 +54,13 @@
           <span>Download print PDF</span>
         </button>
         <button class="cancel-button" id="cancel-print" type="button" hidden>Cancel</button>
+        <a class="print-button race-button" id="race-map" href="#" hidden>
+          <svg aria-hidden="true" viewBox="0 0 24 24">
+            <path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"></path>
+          </svg>
+          <span>Download race map (TIF) <small id="race-map-size"></small></span>
+        </a>
+        <a class="world-link" id="race-map-world" href="#" hidden>World file (.tfw)</a>
         <p id="map-status" class="status" role="status" aria-live="polite">
           Loading map sheets…
         </p>

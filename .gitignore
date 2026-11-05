@@ -2,3 +2,4 @@ tiles/
 node_modules/
 .wrangler/
 .dev.vars
+FullMaps/

@@ -6,6 +6,7 @@ const SHEET_INDEX_URLS = {
   "50k": "./data/loerie-sheets.geojson",
   "250k": "./data/loerie-250k-sheets.geojson"
 };
+const FULLMAPS_INDEX_URL = "./data/fullmaps-index.json";
 const TARGET_SHEET = "3325CC";
 const INITIAL_CENTER = [-33.875, 25.125];
 const INITIAL_ZOOM = 10;
@@ -26,6 +27,9 @@ const selectedSheetElement = document.querySelector("#selected-sheet");
 const selectedSheetNameElement = document.querySelector("#selected-sheet-name");
 const printButton = document.querySelector("#print-map");
 const cancelPrintButton = document.querySelector("#cancel-print");
+const raceMapButton = document.querySelector("#race-map");
+const raceMapButtonSize = document.querySelector("#race-map-size");
+const raceWorldLink = document.querySelector("#race-map-world");
 
 const map = L.map("map", {
   center: INITIAL_CENTER,
@@ -45,6 +49,7 @@ let selectedSheets = {};
 let selectedSheet = null;
 let tileErrors = 0;
 let printController = null;
+let fullMapsBase = "";
 
 function setStatus(message, state = "info") {
   statusElement.textContent = message;
@@ -108,13 +113,34 @@ function styleSheet(feature) {
   };
 }
 
+function formatMegabytes(bytes) {
+  return `${(bytes / 1048576).toFixed(bytes < 10485760 ? 1 : 0)} MB`;
+}
+
+function updateRaceMapButton() {
+  const race = layerSelect.value === "50k" && fullMapsBase ? selectedSheet?.properties.race : null;
+  raceMapButton.hidden = !race;
+  raceWorldLink.hidden = !race;
+  if (!race) {
+    return;
+  }
+  const url = `${fullMapsBase}/${encodeURIComponent(race.file)}`;
+  raceMapButton.href = url;
+  raceMapButton.setAttribute("download", race.file);
+  raceMapButton.title = `${race.file} · ${race.pixels.join(" × ")} px · edition ${race.edition} (${race.year})`;
+  raceMapButtonSize.textContent = `(${formatMegabytes(race.bytes)})`;
+  raceWorldLink.href = `${fullMapsBase}/${encodeURIComponent(race.world)}`;
+}
+
 function updateSelectedSheetDetails() {
   if (!selectedSheet) {
     selectedSheetElement.textContent = "No sheet";
     selectedSheetNameElement.textContent = "";
     printButton.disabled = true;
+    updateRaceMapButton();
     return;
   }
+  updateRaceMapButton();
   selectedSheetElement.textContent = selectedSheet.properties.s;
   selectedSheetNameElement.textContent = sheetName(selectedSheet);
   printButton.disabled = Boolean(printController) || (IS_GITHUB_PAGES && !PDF_WORKER_BASE_URL);
@@ -161,6 +187,37 @@ function onEachFeature(feature, layer) {
   layer.on("click", () => selectSheet(feature, false));
 }
 
+// Links each 50k sheet to its scanned original and adds any scanned sheets missing from the index.
+async function attachFullMaps(collection) {
+  try {
+    const response = await fetch(FULLMAPS_INDEX_URL);
+    if (!response.ok) {
+      throw new Error(`${response.status} ${response.statusText}`);
+    }
+    const { downloadBase, maps } = await response.json();
+    fullMapsBase = downloadBase;
+    const byKey = new Map(collection.features.map((feature) => [feature.properties.s, feature]));
+    for (const entry of maps) {
+      let feature = byKey.get(entry.key);
+      if (!feature) {
+        const { west, east, south, north } = entry.bounds;
+        feature = {
+          type: "Feature",
+          properties: { s: entry.key, y: entry.year, e: entry.edition },
+          geometry: {
+            type: "Polygon",
+            coordinates: [[[west, south], [west, north], [east, north], [east, south], [west, south]]]
+          }
+        };
+        collection.features.push(feature);
+      }
+      feature.properties.race = entry;
+    }
+  } catch (error) {
+    console.warn(`Race map index unavailable: ${error.message}`);
+  }
+}
+
 async function loadSheetIndex() {
   try {
     const loadedCollections = await Promise.all(
@@ -175,6 +232,7 @@ async function loadSheetIndex() {
       })
     );
     sheetCollections = Object.fromEntries(loadedCollections);
+    await attachFullMaps(sheetCollections["50k"]);
 
     for (const [layerName, collection] of Object.entries(sheetCollections)) {
       const target = collection.features.find((feature) => feature.properties.s === TARGET_SHEET);

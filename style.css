@@ -155,8 +155,28 @@ main {
   background: #9b3022;
 }
 
-.cancel-button[hidden] {
+.cancel-button[hidden],
+.race-button[hidden],
+.world-link[hidden] {
   display: none;
+}
+
+.race-button {
+  border-color: #8a5a1f;
+  background: #a86a22;
+  text-decoration: none;
+}
+
+.race-button small {
+  font-weight: 500;
+  opacity: 0.9;
+}
+
+.world-link {
+  align-self: center;
+  margin-bottom: 9px;
+  color: #47643d;
+  font-size: 0.78rem;
 }
 
 .status {
