@@ -8,6 +8,9 @@ const SHEET_INDEX_URLS = {
 };
 // Matches the Worker's allowed tile area (worker/index.js); PDFs outside it cannot be built on GitHub Pages.
 const PDF_AREA = { west: 23.5, east: 26.5, south: -34.75, north: -32.5 };
+// Free Frame size in degrees: the same footprint as a 1:50,000 sheet (portrait on paper);
+// 1:250,000 uses a typical landscape sheet footprint.
+const FRAME_SIZE = { "50k": { width: 0.25, height: 0.25 }, "250k": { width: 2, height: 1 } };
 const FULLMAPS_INDEX_URL = "./data/fullmaps-index.json";
 const TARGET_SHEET = "3325CC";
 const INITIAL_CENTER = [-33.875, 25.125];
@@ -32,6 +35,11 @@ const cancelPrintButton = document.querySelector("#cancel-print");
 const raceMapButton = document.querySelector("#race-map");
 const raceMapButtonSize = document.querySelector("#race-map-size");
 const raceWorldLink = document.querySelector("#race-map-world");
+const toolDrawer = document.querySelector("#tool-drawer");
+const drawerToggle = document.querySelector("#drawer-toggle");
+const toolButtons = document.querySelectorAll(".tool-button");
+const toolHint = document.querySelector("#tool-hint");
+const clearFrameButton = document.querySelector("#clear-frame");
 
 const map = L.map("map", {
   center: INITIAL_CENTER,
@@ -60,6 +68,16 @@ let selectedSheet = null;
 let tileErrors = 0;
 let printController = null;
 let fullMapsBase = "";
+let toolMode = "select";
+let freeFrame = null;
+let frameCenter = null;
+let frameRect = null;
+let frameHandle = null;
+let downloadAreaLayer = null;
+
+function activeTarget() {
+  return toolMode === "frame" ? freeFrame : selectedSheet;
+}
 
 function setStatus(message, state = "info") {
   statusElement.textContent = message;
@@ -130,7 +148,7 @@ function formatMegabytes(bytes) {
 }
 
 function updateRaceMapButton() {
-  const race = layerSelect.value === "50k" && fullMapsBase ? selectedSheet?.properties.race : null;
+  const race = layerSelect.value === "50k" && fullMapsBase ? activeTarget()?.properties.race : null;
   raceMapButton.hidden = !race;
   raceWorldLink.hidden = !race;
   if (!race) {
@@ -145,17 +163,23 @@ function updateRaceMapButton() {
 }
 
 function updateSelectedSheetDetails() {
-  if (!selectedSheet) {
-    selectedSheetElement.textContent = "No sheet";
-    selectedSheetNameElement.textContent = "";
+  const target = activeTarget();
+  updateRaceMapButton();
+  if (!target) {
+    selectedSheetElement.textContent = toolMode === "frame" ? "No frame" : "No sheet";
+    selectedSheetNameElement.textContent = toolMode === "frame" ? "Click the map" : "";
     printButton.disabled = true;
-    updateRaceMapButton();
+    printButton.title = "";
     return;
   }
-  updateRaceMapButton();
-  selectedSheetElement.textContent = selectedSheet.properties.s;
-  selectedSheetNameElement.textContent = sheetName(selectedSheet);
-  const pdfAvailable = isPdfAvailable(selectedSheet);
+  if (target.properties.custom) {
+    selectedSheetElement.textContent = "Free frame";
+    selectedSheetNameElement.textContent = `${Math.abs(frameCenter.lat).toFixed(3)}° S, ${frameCenter.lng.toFixed(3)}° E`;
+  } else {
+    selectedSheetElement.textContent = target.properties.s;
+    selectedSheetNameElement.textContent = sheetName(target);
+  }
+  const pdfAvailable = isPdfAvailable(target);
   printButton.disabled = Boolean(printController) || (IS_GITHUB_PAGES && !PDF_WORKER_BASE_URL) || !pdfAvailable;
   printButton.title = pdfAvailable ? "" : "PDF export is not yet available for this area.";
 }
@@ -165,11 +189,10 @@ function renderSheetLayer() {
     map.removeLayer(sheetLayer);
     sheetLayer = null;
   }
-  if (selectedSheet && sheetIndexToggle.checked) {
+  if (toolMode === "select" && selectedSheet && sheetIndexToggle.checked) {
     sheetLayer = L.geoJSON(selectedSheet, { style: styleSheet, interactive: false }).addTo(map);
   }
 }
-
 function sheetPopupHtml(feature) {
   const { s: sheet, e: edition, y: year } = feature.properties;
   const name = sheetName(feature);
@@ -213,10 +236,172 @@ function sheetAt(latlng) {
 }
 
 map.on("click", (event) => {
+  if (toolMode === "frame") {
+    placeFrame(event.latlng);
+    return;
+  }
   const feature = sheetAt(event.latlng);
   if (feature) {
     selectSheet(feature, false, event.latlng);
   }
+});
+
+function downloadArea() {
+  return IS_GITHUB_PAGES ? PDF_AREA : { west: 16.2, east: 33.1, south: -35.2, north: -21.9 };
+}
+
+function frameFeature(center, layerName) {
+  const { width, height } = FRAME_SIZE[layerName];
+  const west = center.lng - width / 2;
+  const east = center.lng + width / 2;
+  const south = center.lat - height / 2;
+  const north = center.lat + height / 2;
+  return {
+    type: "Feature",
+    properties: { s: "CUSTOM", custom: true, e: "", y: "" },
+    geometry: {
+      type: "Polygon",
+      coordinates: [[[west, south], [west, north], [east, north], [east, south], [west, south]]]
+    }
+  };
+}
+
+function clampFrameCenter(center, layerName) {
+  const { width, height } = FRAME_SIZE[layerName];
+  const area = downloadArea();
+  return L.latLng(
+    Math.min(Math.max(center.lat, area.south + height / 2), area.north - height / 2),
+    Math.min(Math.max(center.lng, area.west + width / 2), area.east - width / 2)
+  );
+}
+
+function frameBounds() {
+  const { west, east, south, north } = boundsForFeature(freeFrame);
+  return L.latLngBounds([south, west], [north, east]);
+}
+
+function setFrameCenter(center, { moveHandle = true } = {}) {
+  frameCenter = clampFrameCenter(center, layerSelect.value);
+  freeFrame = frameFeature(frameCenter, layerSelect.value);
+  frameRect?.setBounds(frameBounds());
+  if (moveHandle) {
+    frameHandle?.setLatLng(frameCenter);
+  }
+  updateSelectedSheetDetails();
+  setStatus(
+    `Free frame centred at ${Math.abs(frameCenter.lat).toFixed(4)}° S, ${frameCenter.lng.toFixed(4)}° E. Drag it to adjust.`
+  );
+}
+
+function startFrameDrag(event) {
+  L.DomEvent.stopPropagation(event);
+  map.dragging.disable();
+  const offsetLat = event.latlng.lat - frameCenter.lat;
+  const offsetLng = event.latlng.lng - frameCenter.lng;
+  const move = (moveEvent) =>
+    setFrameCenter(L.latLng(moveEvent.latlng.lat - offsetLat, moveEvent.latlng.lng - offsetLng));
+  const stop = () => {
+    map.off("mousemove", move);
+    document.removeEventListener("mouseup", stop);
+    map.dragging.enable();
+  };
+  map.on("mousemove", move);
+  document.addEventListener("mouseup", stop);
+}
+
+function renderFrame() {
+  frameRect?.remove();
+  frameHandle?.remove();
+  frameRect = null;
+  frameHandle = null;
+  if (toolMode !== "frame" || !freeFrame) {
+    return;
+  }
+  frameRect = L.rectangle(frameBounds(), {
+    color: "#d14d2a",
+    weight: 3,
+    fillColor: "#f0b27e",
+    fillOpacity: 0.18,
+    bubblingMouseEvents: false,
+    className: "free-frame"
+  }).addTo(map);
+  frameRect.on("mousedown", startFrameDrag);
+  frameHandle = L.marker(frameCenter, {
+    draggable: true,
+    keyboard: false,
+    title: "Drag to move the frame",
+    icon: L.divIcon({ className: "frame-handle", html: "✥", iconSize: [34, 34], iconAnchor: [17, 17] })
+  }).addTo(map);
+  frameHandle.on("drag", () => setFrameCenter(frameHandle.getLatLng(), { moveHandle: false }));
+  frameHandle.on("dragend", () => frameHandle.setLatLng(frameCenter));
+}
+
+function placeFrame(latlng) {
+  const area = downloadArea();
+  if (latlng.lat < area.south || latlng.lat > area.north || latlng.lng < area.west || latlng.lng > area.east) {
+    setStatus("Free frames can only be placed inside the dashed downloadable area.", "error");
+    return;
+  }
+  frameCenter = clampFrameCenter(latlng, layerSelect.value);
+  freeFrame = frameFeature(frameCenter, layerSelect.value);
+  renderFrame();
+  updateSelectedSheetDetails();
+  setStatus(
+    `Free frame placed at ${Math.abs(frameCenter.lat).toFixed(4)}° S, ${frameCenter.lng.toFixed(4)}° E. Drag it to adjust.`
+  );
+}
+
+function setTool(tool) {
+  toolMode = tool;
+  for (const button of toolButtons) {
+    const active = button.dataset.tool === tool;
+    button.setAttribute("aria-checked", String(active));
+    button.classList.toggle("active", active);
+  }
+  map.closePopup();
+  map.getContainer().classList.toggle("frame-mode", tool === "frame");
+  clearFrameButton.hidden = tool !== "frame";
+  downloadAreaLayer?.remove();
+  downloadAreaLayer = null;
+  if (tool === "frame") {
+    const area = downloadArea();
+    downloadAreaLayer = L.rectangle([[area.south, area.west], [area.north, area.east]], {
+      color: "#597343",
+      weight: 2,
+      dashArray: "8 6",
+      fill: false,
+      interactive: false
+    }).addTo(map);
+    toolHint.textContent =
+      "Click inside the dashed area to place a fixed-size frame, then drag it (or its ✥ handle) to position it.";
+    setStatus(freeFrame ? "Drag the free frame to adjust it." : "Free Frame: click the map to place a frame.");
+  } else {
+    toolHint.textContent = "Click a sheet to select it for download.";
+    if (selectedSheet) {
+      setStatus(`Selected sheet ${selectedSheet.properties.s}, edition ${selectedSheet.properties.e} (${selectedSheet.properties.y}).`);
+    }
+  }
+  renderSheetLayer();
+  renderFrame();
+  updateSelectedSheetDetails();
+}
+
+for (const button of toolButtons) {
+  button.addEventListener("click", () => setTool(button.dataset.tool));
+}
+
+clearFrameButton.addEventListener("click", () => {
+  freeFrame = null;
+  frameCenter = null;
+  renderFrame();
+  updateSelectedSheetDetails();
+  setStatus("Free frame cleared. Click the map to place a new one.");
+});
+
+drawerToggle.addEventListener("click", () => {
+  const open = toolDrawer.dataset.open !== "true";
+  toolDrawer.dataset.open = String(open);
+  drawerToggle.setAttribute("aria-expanded", String(open));
 });
 // Links each 50k sheet to its scanned original. Combined sheets are matched regardless of code order.
 async function attachFullMaps(collection) {
@@ -289,6 +474,10 @@ function handleLayerChange() {
     updateSelectedSheetDetails();
     renderSheetLayer();
   }
+  if (freeFrame) {
+    setFrameCenter(frameCenter);
+    renderFrame();
+  }
 }
 
 layerSelect.addEventListener("change", handleLayerChange);
@@ -296,8 +485,9 @@ sourceSelect.addEventListener("change", replaceTileLayer);
 sheetIndexToggle.addEventListener("change", renderSheetLayer);
 
 document.querySelector("#focus-sheet").addEventListener("click", () => {
-  if (selectedSheet) {
-    map.fitBounds(L.geoJSON(selectedSheet).getBounds(), { padding: [32, 32] });
+  const target = activeTarget();
+  if (target) {
+    map.fitBounds(L.geoJSON(target).getBounds(), { padding: [32, 32] });
   }
 });
 
@@ -490,8 +680,8 @@ function makePdfContent({
   text("SOUTH AFRICA | TOPOGRAPHIC", margin, 27, 6.5);
   centeredText(lines.title.toUpperCase(), pageWidth / 2, 24, 17, "F2");
   rectangle(pageWidth - 93, 9, 79, 22, "0.25 0.25 0.25");
-  text(`SHEET ${lines.sheet}`, pageWidth - 89, 17, 7, "F2");
-  text(`EDITION ${lines.edition} | ${lines.year}`, pageWidth - 89, 25, 6.5);
+  text(lines.headerSheet, pageWidth - 89, 17, 7, "F2");
+  text(lines.headerEdition, pageWidth - 89, 25, 6.5);
   line(margin, 39, pageWidth - margin, 39, 0.35);
 
   commands.push("q 0.25 w 0 0 0 RG");
@@ -698,6 +888,64 @@ function makePdfContent({
   const indexX = (pageWidth - indexWidth) / 2;
   const indexY = detailsTop + 6;
   text("INDEX TO SHEETS / INDEKS VAN VELLE", indexX, indexY + 2, 5.8, "F2");
+  // Custom frames rarely align with the sheet grid, so draw true sheet outlines around the frame.
+  const drawCustomIndex = () => {
+    const pad = 0.25;
+    const frame = lines.bounds;
+    const region = {
+      west: frame.west - pad,
+      east: frame.east + pad,
+      south: frame.south - pad,
+      north: frame.north + pad
+    };
+    const areaX = indexX + 2;
+    const areaY = indexY + 7;
+    const areaWidth = indexWidth - 4;
+    const areaHeight = 34;
+    const toX = (longitude) => areaX + ((longitude - region.west) / (region.east - region.west)) * areaWidth;
+    const toY = (latitude) => areaY + ((region.north - latitude) / (region.north - region.south)) * areaHeight;
+    rectangle(areaX, areaY, areaWidth, areaHeight, "0.35 0.35 0.35", "1 1 1", 0.2);
+    rectangle(
+      toX(frame.west),
+      toY(frame.north),
+      toX(frame.east) - toX(frame.west),
+      toY(frame.south) - toY(frame.north),
+      "0.72 0.12 0.08",
+      "0.96 0.88 0.78",
+      0.5
+    );
+    sheetIndexFeatures.forEach((feature) => {
+      const box = boundsForFeature(feature);
+      const west = Math.max(box.west, region.west);
+      const east = Math.min(box.east, region.east);
+      const south = Math.max(box.south, region.south);
+      const north = Math.min(box.north, region.north);
+      if (east - west < 1e-6 || north - south < 1e-6) {
+        return;
+      }
+      rectangle(toX(west), toY(north), toX(east) - toX(west), toY(south) - toY(north), "0.5 0.5 0.5", null, 0.15);
+      const centerLongitude = (box.west + box.east) / 2;
+      const centerLatitude = (box.south + box.north) / 2;
+      if (
+        centerLongitude >= region.west && centerLongitude <= region.east &&
+        centerLatitude >= region.south && centerLatitude <= region.north
+      ) {
+        centeredText(feature.properties.s, toX(centerLongitude), toY(centerLatitude) + 1.5, layerName === "50k" ? 4.6 : 3.2);
+      }
+    });
+    rectangle(
+      toX(frame.west),
+      toY(frame.north),
+      toX(frame.east) - toX(frame.west),
+      toY(frame.south) - toY(frame.north),
+      "0.72 0.12 0.08",
+      null,
+      0.6
+    );
+  };
+  if (lines.custom) {
+    drawCustomIndex();
+  } else {
   const cellSize = 0.25;
   const gridColumns = layerName === "50k"
     ? 3
@@ -762,6 +1010,7 @@ function makePdfContent({
   if (layerName === "250k") {
     rectangle(gridX, gridY, gridWidth, gridHeight, "0.72 0.12 0.08", null, 0.55);
     centeredText(lines.sheet, gridX + gridWidth / 2, gridY + gridHeight + 6, 5.5, "F2");
+  }
   }
 
   const detailX = pageWidth - margin - 211;
@@ -835,8 +1084,29 @@ function formatCoordinate(value, positive, negative) {
   return `${Math.abs(value).toFixed(5)} ${value >= 0 ? positive : negative}`;
 }
 
+function overlappingSheets(bounds) {
+  return (sheetCollections["50k"]?.features || []).filter((feature) => {
+    const other = boundsForFeature(feature);
+    return (
+      other.east - bounds.west > 1e-6 &&
+      bounds.east - other.west > 1e-6 &&
+      other.north - bounds.south > 1e-6 &&
+      bounds.north - other.south > 1e-6
+    );
+  });
+}
+
+function coverageLabel(bounds) {
+  const codes = overlappingSheets(bounds).map((feature) => feature.properties.s);
+  if (!codes.length) {
+    return "Sheets: n/a";
+  }
+  const shown = codes.slice(0, 8).join(", ");
+  return `Sheets: ${shown}${codes.length > 8 ? ` +${codes.length - 8} more` : ""}`;
+}
+
 function buildPrintLines(feature, layerName, tileSource, bounds, generatedAt) {
-  const { s: sheet, e: edition, y: year } = feature.properties;
+  const { s: sheet, e: edition, y: year, custom } = feature.properties;
   const scale = MAP_SCALE[layerName];
   const scaleLabel = layerName === "50k" ? "50 000" : "250 000";
   const centerLatitude = (bounds.north + bounds.south) / 2;
@@ -857,8 +1127,13 @@ function buildPrintLines(feature, layerName, tileSource, bounds, generatedAt) {
     centerLatitude,
     scale,
     sourceZoom: NATIVE_ZOOM[layerName],
-    title: `${sheet}${sheetName(feature) ? ` - ${sheetName(feature)}` : ""}`,
-    subtitle: `NGI 1:${scaleLabel} topographic map | Edition ${edition} (${year})`,
+    custom,
+    headerSheet: custom ? "CUSTOM FRAME" : `SHEET ${sheet}`,
+    headerEdition: custom ? "EDITION PER SOURCE SHEET" : `EDITION ${edition} | ${year}`,
+    title: custom ? "Custom map frame" : `${sheet}${sheetName(feature) ? ` - ${sheetName(feature)}` : ""}`,
+    subtitle: custom
+      ? `NGI 1:${scaleLabel} topographic map | Custom frame | ${coverageLabel(bounds)}`
+      : `NGI 1:${scaleLabel} topographic map | Edition ${edition} (${year})`,
     extent:
       `Extent: ${formatCoordinate(bounds.west, "E", "W")} to ${formatCoordinate(bounds.east, "E", "W")}, ` +
       `${formatCoordinate(bounds.south, "N", "S")} to ${formatCoordinate(bounds.north, "N", "S")}`,
@@ -922,14 +1197,16 @@ async function createPrintPdf(feature, layerName, tileSource, signal) {
 }
 
 printButton.addEventListener("click", async () => {
-  if (printController || !selectedSheet) {
+  const feature = activeTarget();
+  if (printController || !feature) {
     return;
   }
   printController = new AbortController();
   printButton.disabled = true;
   cancelPrintButton.hidden = false;
-  const feature = selectedSheet;
-  const fileSheet = feature.properties.s;
+  const fileSheet = feature.properties.custom
+    ? `FreeFrame_${Math.abs(frameCenter.lat).toFixed(3)}S_${frameCenter.lng.toFixed(3)}E`
+    : feature.properties.s;
   const fileLayer = layerSelect.value;
   const tileSource = sourceSelect.value;
   try {
@@ -943,7 +1220,7 @@ printButton.addEventListener("click", async () => {
     anchor.download = `TopoSearch_${fileSheet}_${fileLayer}_${new Date().toISOString().slice(0, 10)}.pdf`;
     anchor.click();
     setTimeout(() => URL.revokeObjectURL(url), 60000);
-    setStatus(`Downloaded full-resolution print PDF for sheet ${fileSheet}.`);
+    setStatus(`Downloaded full-resolution print PDF for ${feature.properties.custom ? "the free frame" : `sheet ${fileSheet}`}.`);
   } catch (error) {
     if (error.name === "AbortError") {
       setStatus("PDF generation canceled.");

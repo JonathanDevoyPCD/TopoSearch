@@ -44,6 +44,15 @@ Cloudflare dashboard, and confirm NGI terms permit this use before sharing PDFs.
 
 Local PDF generation continues to use `node .\serve.js`.
 
+## Tools
+
+The tool drawer (top right of the map) has two tools:
+
+- **Select** – click a sheet to select it for download.
+- **Free Frame** – click to place a fixed-size, sheet-sized frame (1:50,000: 0.25° × 0.25°; 1:250,000: 2° × 1°),
+  then drag it (or its ✥ handle) into position. The PDF covers exactly the frame and lists the source sheets it
+  overlaps. On GitHub Pages the frame is limited to the dashed downloadable area.
+
 ## Map coverage and sources
 
 - The online 1:50,000 and 1:250,000 layers are served by the

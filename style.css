@@ -232,3 +232,117 @@ main {
     min-height: 360px;
   }
 }
+
+.map-shell {
+  position: relative;
+}
+
+.tool-drawer {
+  position: absolute;
+  z-index: 1000;
+  top: 12px;
+  right: 12px;
+  width: 190px;
+  border: 1px solid #c5cbc0;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 2px 8px rgba(24, 35, 31, 0.22);
+  font-size: 0.82rem;
+}
+
+.drawer-toggle,
+.tool-button,
+.tool-clear {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 38px;
+  padding: 7px 11px;
+  border: 0;
+  background: transparent;
+  color: #18231f;
+  font: inherit;
+  font-weight: 650;
+  text-align: left;
+  cursor: pointer;
+}
+
+.drawer-toggle {
+  border-radius: 7px;
+  color: #3d4b43;
+}
+
+.tool-drawer svg {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.7;
+}
+
+.tool-list {
+  display: grid;
+  gap: 2px;
+  padding: 0 6px 8px;
+  border-top: 1px solid #e1e5dc;
+}
+
+.tool-drawer[data-open="false"] .tool-list {
+  display: none;
+}
+
+.tool-button {
+  border-radius: 5px;
+}
+
+.tool-button:hover,
+.drawer-toggle:hover {
+  background: #eef1e8;
+}
+
+.tool-button.active {
+  background: #597343;
+  color: #fff;
+}
+
+.tool-hint {
+  margin: 6px 5px 2px;
+  color: #4d5b50;
+  font-size: 0.76rem;
+  line-height: 1.35;
+}
+
+.tool-clear {
+  justify-content: center;
+  border: 1px solid #9b3022;
+  border-radius: 5px;
+  color: #9b3022;
+}
+
+.tool-clear[hidden] {
+  display: none;
+}
+
+#map.frame-mode {
+  cursor: crosshair;
+}
+
+#map.frame-mode .free-frame {
+  cursor: move;
+}
+
+.frame-handle {
+  display: grid;
+  place-items: center;
+  border: 2px solid #d14d2a;
+  border-radius: 50%;
+  background: #fff;
+  color: #d14d2a;
+  font-size: 18px;
+  line-height: 1;
+  cursor: move;
+}
