@@ -1,4 +1,5 @@
 import { magvar, MODEL_EPOCH, MODEL_VALID_UNTIL } from "./vendor/magvar/magvar.js";
+import { onQuotaChange, quotaRemaining, startGeneration } from "./auth.js";
 
 const NGI_ROOT = "https://htonl.dev.openstreetmap.org/ngi-tiles";
 const LOCAL_TILE_ROOT = "./tiles";
@@ -67,6 +68,7 @@ let selectedSheets = {};
 let selectedSheet = null;
 let tileErrors = 0;
 let printController = null;
+let printToken = null;
 let fullMapsBase = "";
 let toolMode = "select";
 let freeFrame = null;
@@ -180,8 +182,14 @@ function updateSelectedSheetDetails() {
     selectedSheetNameElement.textContent = sheetName(target);
   }
   const pdfAvailable = isPdfAvailable(target);
-  printButton.disabled = Boolean(printController) || (IS_GITHUB_PAGES && !PDF_WORKER_BASE_URL) || !pdfAvailable;
-  printButton.title = pdfAvailable ? "" : "PDF export is not yet available for this area.";
+  const outOfQuota = quotaRemaining() === 0;
+  printButton.disabled =
+    Boolean(printController) || (IS_GITHUB_PAGES && !PDF_WORKER_BASE_URL) || !pdfAvailable || outOfQuota;
+  printButton.title = !pdfAvailable
+    ? "PDF export is not yet available for this area."
+    : outOfQuota
+      ? "You have used all of your map generations for this month."
+      : "";
 }
 
 function renderSheetLayer() {
@@ -525,7 +533,8 @@ function tileSourceUrl(layerName, zoom, x, y, tileSource) {
 }
 
 async function downloadTile(url, signal) {
-  const response = await fetch(url, { signal });
+  const headers = printToken && url.startsWith(PDF_WORKER_BASE_URL) ? { Authorization: `Bearer ${printToken}` } : undefined;
+  const response = await fetch(url, { signal, headers });
   if (!response.ok) {
     throw new Error(`Tile request failed (${response.status}) for ${url}`);
   }
@@ -1210,6 +1219,7 @@ printButton.addEventListener("click", async () => {
   const fileLayer = layerSelect.value;
   const tileSource = sourceSelect.value;
   try {
+    printToken = await startGeneration();
     const pdf = await createPrintPdf(feature, fileLayer, tileSource, printController.signal);
     if (printController.signal.aborted) {
       return;
@@ -1229,6 +1239,7 @@ printButton.addEventListener("click", async () => {
     }
   } finally {
     printController = null;
+    printToken = null;
     cancelPrintButton.hidden = true;
     updateSelectedSheetDetails();
   }
@@ -1243,6 +1254,11 @@ cancelPrintButton.addEventListener("click", () => {
 
 replaceTileLayer();
 loadSheetIndex();
+onQuotaChange(() => updateSelectedSheetDetails());
+document.addEventListener("toposearch:signed-in", () => {
+  map.invalidateSize();
+  updateSelectedSheetDetails();
+});
 if (IS_GITHUB_PAGES && !PDF_WORKER_BASE_URL) {
   printButton.title = "Deploy the Cloudflare Worker and configure its URL to enable PDF downloads.";
 }

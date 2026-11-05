@@ -1,232 +1,43 @@
-:root {
-  color-scheme: light;
-  font-family: "Segoe UI", Arial, sans-serif;
-  color: #18231f;
-  background: #f2f3ed;
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
+/* Layout and component styling is Tailwind (see index.html). This file holds map-specific rules. */
+
+[hidden] {
+  display: none !important;
 }
 
-* {
-  box-sizing: border-box;
-}
-
-body {
-  min-width: 320px;
-  margin: 0;
-}
-
-.app-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 24px;
-  padding: 20px clamp(16px, 4vw, 48px);
-  color: #f8f8f2;
-  background: #18231f;
-}
-
-.eyebrow {
-  margin: 0 0 5px;
-  color: #b8cc8a;
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-}
-
-h1 {
-  margin: 0;
-  font-size: clamp(1.35rem, 3vw, 1.9rem);
-}
-
-.subtitle {
-  margin: 5px 0 0;
-  color: #d0d7cd;
-  font-size: 0.92rem;
-}
-
-.sheet-badge {
-  flex: 0 0 auto;
-  display: grid;
-  gap: 2px;
-  min-width: 104px;
-  padding: 10px 14px;
-  border: 1px solid #738960;
-  border-radius: 8px;
-  color: #f8f8f2;
-  background: transparent;
-  font-size: 1.05rem;
-  font-weight: 700;
-  text-align: center;
-  text-decoration: none;
-  cursor: pointer;
-}
-
-.sheet-badge strong {
-  font-size: inherit;
-}
-
-.sheet-badge span {
-  color: #c6d2bc;
-  font-size: 0.78rem;
-  font-weight: 400;
-}
-
-main {
-  padding: 14px clamp(10px, 2vw, 24px) 18px;
-}
-
-.toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: end;
-  gap: 12px 20px;
-  padding: 0 2px 12px;
-}
-
-.toolbar label {
-  display: grid;
-  gap: 5px;
-  color: #3d4b43;
-  font-size: 0.8rem;
-  font-weight: 650;
-}
-
-.toolbar select {
-  min-height: 38px;
-  min-width: 190px;
-  padding: 6px 30px 6px 10px;
-  border: 1px solid #c5cbc0;
-  border-radius: 5px;
+.auth-tab[aria-selected="true"] {
   background: #fff;
-  color: #18231f;
-  font: inherit;
+  color: #065f46;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
 }
 
-.toolbar .checkbox-label {
-  display: flex;
-  align-items: center;
-  min-height: 38px;
-  gap: 8px;
+[data-busy="true"] {
+  cursor: progress;
+  opacity: 0.6;
 }
 
-.checkbox-label input {
-  width: 16px;
-  height: 16px;
-  accent-color: #597343;
+#auth-view[data-loading="true"] {
+  opacity: 0.6;
+  pointer-events: none;
 }
 
-.print-button,
-.cancel-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  min-height: 38px;
-  padding: 7px 12px;
-  border: 1px solid #47643d;
-  border-radius: 5px;
-  background: #597343;
-  color: #fff;
-  font: inherit;
-  font-size: 0.84rem;
-  font-weight: 650;
-  cursor: pointer;
+/* Tailwind's reset makes images fluid, which breaks Leaflet tiles. */
+.leaflet-container img,
+.leaflet-container svg {
+  max-width: none !important;
+  max-height: none !important;
 }
 
-.print-button:disabled {
-  border-color: #a9b1a5;
-  background: #a9b1a5;
-  cursor: not-allowed;
-}
-
-.print-button svg {
-  width: 18px;
-  height: 18px;
-  fill: none;
-  stroke: currentColor;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 1.7;
-}
-
-.cancel-button {
-  border-color: #9b3022;
-  background: #9b3022;
-}
-
-.cancel-button[hidden],
-.race-button[hidden],
-.world-link[hidden] {
-  display: none;
-}
-
-.race-button {
-  border-color: #8a5a1f;
-  background: #a86a22;
-  text-decoration: none;
-}
-
-.race-button small {
-  font-weight: 500;
-  opacity: 0.9;
-}
-
-.world-link {
-  align-self: center;
-  margin-bottom: 9px;
-  color: #47643d;
-  font-size: 0.78rem;
-}
-
-.status {
-  flex: 1 1 220px;
-  margin: 0 0 9px;
-  color: #4d5b50;
-  font-size: 0.82rem;
-}
-
-.status[data-state="error"] {
-  color: #9b3022;
+.leaflet-container {
+  font-family: inherit;
 }
 
 #map {
-  height: min(72vh, 820px);
+  height: calc(100vh - 290px);
   min-height: 420px;
-  border: 1px solid #c5cbc0;
-  border-radius: 7px;
-  background: #e5e7df;
-}
-
-.app-footer {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 6px 18px;
-  color: #58645b;
-  font-size: 0.76rem;
-}
-
-.app-footer p {
-  margin: 8px 0 0;
-}
-
-.coordinates {
-  white-space: nowrap;
-  font-variant-numeric: tabular-nums;
+  background: #e7e5e4;
 }
 
 @media (max-width: 560px) {
-  .app-header {
-    align-items: flex-start;
-  }
-
-  .sheet-badge {
-    min-width: 84px;
-    padding: 8px;
-  }
-
   #map {
     height: 66vh;
     min-height: 360px;
@@ -243,10 +54,9 @@ main {
   top: 12px;
   right: 12px;
   width: 190px;
-  border: 1px solid #c5cbc0;
-  border-radius: 7px;
-  background: rgba(255, 255, 255, 0.96);
-  box-shadow: 0 2px 8px rgba(24, 35, 31, 0.22);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.97);
+  box-shadow: 0 4px 14px rgba(28, 25, 23, 0.18), 0 0 0 1px rgba(28, 25, 23, 0.06);
   font-size: 0.82rem;
 }
 
@@ -261,16 +71,16 @@ main {
   padding: 7px 11px;
   border: 0;
   background: transparent;
-  color: #18231f;
+  color: #1c1917;
   font: inherit;
-  font-weight: 650;
+  font-weight: 600;
   text-align: left;
   cursor: pointer;
 }
 
 .drawer-toggle {
-  border-radius: 7px;
-  color: #3d4b43;
+  border-radius: 12px;
+  color: #44403c;
 }
 
 .tool-drawer svg {
@@ -288,7 +98,7 @@ main {
   display: grid;
   gap: 2px;
   padding: 0 6px 8px;
-  border-top: 1px solid #e1e5dc;
+  border-top: 1px solid #e7e5e4;
 }
 
 .tool-drawer[data-open="false"] .tool-list {
@@ -296,31 +106,31 @@ main {
 }
 
 .tool-button {
-  border-radius: 5px;
+  border-radius: 8px;
 }
 
 .tool-button:hover,
 .drawer-toggle:hover {
-  background: #eef1e8;
+  background: #f5f5f4;
 }
 
 .tool-button.active {
-  background: #597343;
+  background: #047857;
   color: #fff;
 }
 
 .tool-hint {
   margin: 6px 5px 2px;
-  color: #4d5b50;
+  color: #57534e;
   font-size: 0.76rem;
   line-height: 1.35;
 }
 
 .tool-clear {
   justify-content: center;
-  border: 1px solid #9b3022;
-  border-radius: 5px;
-  color: #9b3022;
+  border: 1px solid #b91c1c;
+  border-radius: 8px;
+  color: #b91c1c;
 }
 
 .tool-clear[hidden] {

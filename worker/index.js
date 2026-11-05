@@ -1,4 +1,5 @@
 const NGI_TILE_ORIGIN = "https://htonl.dev.openstreetmap.org";
+import { HttpError, handleAuth, isAuthRoute, requirePrintToken } from "./auth.js";
 const TILE_PATH = /^\/(50k|250k)\/(\d+)\/(\d+)\/(\d+)\.png$/;
 const MAX_ZOOM = { "50k": 15, "250k": 12 };
 const ALLOWED_AREA = {
@@ -12,14 +13,14 @@ const CACHE_SECONDS = 60 * 60 * 24 * 30;
 function corsHeaders(origin) {
   return {
     "Access-Control-Allow-Origin": origin,
-    "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+    "Access-Control-Allow-Methods": "GET, HEAD, POST, OPTIONS",
     "Access-Control-Max-Age": "86400",
     "Vary": "Origin"
   };
 }
 
-function jsonError(message, status, origin) {
-  return new Response(JSON.stringify({ error: message }), {
+function jsonError(message, status, origin, extra = {}) {
+  return new Response(JSON.stringify({ error: message, ...extra }), {
     status,
     headers: {
       ...corsHeaders(origin),
@@ -27,6 +28,26 @@ function jsonError(message, status, origin) {
       "Content-Type": "application/json; charset=utf-8"
     }
   });
+}
+
+function jsonOk(body, origin) {
+  return new Response(JSON.stringify(body), {
+    status: 200,
+    headers: {
+      ...corsHeaders(origin),
+      "Cache-Control": "no-store",
+      "Content-Type": "application/json; charset=utf-8"
+    }
+  });
+}
+
+async function limited(limiter, request) {
+  if (!limiter) {
+    return false;
+  }
+  const client = request.headers.get("CF-Connecting-IP") || "unknown";
+  const { success } = await limiter.limit({ key: client });
+  return !success;
 }
 
 function tileBounds(zoom, x, tmsRow) {
@@ -57,7 +78,8 @@ function intersectsAllowedArea(bounds) {
 export default {
   async fetch(request, env, ctx) {
     const origin = request.headers.get("Origin");
-    if (!origin || origin !== env.ALLOWED_ORIGIN) {
+    const allowedOrigins = String(env.ALLOWED_ORIGIN || "").split(",").map((item) => item.trim());
+    if (!origin || !allowedOrigins.includes(origin)) {
       return new Response("Origin not allowed", { status: 403 });
     }
 
@@ -66,18 +88,43 @@ export default {
         status: 204,
         headers: {
           ...corsHeaders(origin),
-          "Access-Control-Allow-Headers": "Content-Type"
+          "Access-Control-Allow-Headers": "Content-Type, Authorization"
         }
       });
     }
+
+    const url = new URL(request.url);
+    if (isAuthRoute(request, url.pathname)) {
+      if (await limited(env.AUTH_LIMITER, request)) {
+        return jsonError("Too many attempts. Please wait a minute and try again.", 429, origin);
+      }
+      try {
+        return jsonOk(await handleAuth(request, url.pathname, env, ctx), origin);
+      } catch (error) {
+        if (error instanceof HttpError) {
+          return jsonError(error.message, error.status, origin, error.extra);
+        }
+        console.error("Auth route failed:", error);
+        return jsonError("Something went wrong. Please try again.", 500, origin);
+      }
+    }
+
     if (request.method !== "GET" && request.method !== "HEAD") {
       return jsonError("Method not allowed", 405, origin);
     }
 
-    const url = new URL(request.url);
     const match = url.pathname.match(TILE_PATH);
     if (!match || url.search) {
       return jsonError("Invalid tile path", 400, origin);
+    }
+
+    try {
+      await requirePrintToken(request, env);
+    } catch (error) {
+      if (error instanceof HttpError) {
+        return jsonError(error.message, error.status, origin);
+      }
+      throw error;
     }
 
     const [, layer, zoomText, xText, rowText] = match;
@@ -103,14 +150,10 @@ export default {
     }
 
     // Per-client limit (Workers Rate Limiting binding, optional). Protects the free quota.
-    if (env.TILE_LIMITER) {
-      const client = request.headers.get("CF-Connecting-IP") || "unknown";
-      const { success } = await env.TILE_LIMITER.limit({ key: client });
-      if (!success) {
-        const limited = jsonError("Too many tile requests. Please wait a minute and try again.", 429, origin);
-        limited.headers.set("Retry-After", "60");
-        return limited;
-      }
+    if (await limited(env.TILE_LIMITER, request)) {
+      const tooMany = jsonError("Too many tile requests. Please wait a minute and try again.", 429, origin);
+      tooMany.headers.set("Retry-After", "60");
+      return tooMany;
     }
 
     const cache = request.method === "GET" && typeof caches !== "undefined" ? caches.default : null;

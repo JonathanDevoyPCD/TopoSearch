@@ -5,14 +5,29 @@
   "compatibility_date": "2026-10-23",
   "workers_dev": true,
   "preview_urls": false,
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "toposearch",
+      "database_id": "a517348e-7ae4-4071-a9da-a4c0f49bd3ee"
+    }
+  ],
   "ratelimits": [
     {
       "name": "TILE_LIMITER",
       "namespace_id": "1001",
       "simple": { "limit": 1500, "period": 60 }
+    },
+    {
+      "name": "AUTH_LIMITER",
+      "namespace_id": "1002",
+      "simple": { "limit": 10, "period": 60 }
     }
   ],
   "vars": {
+    "SITE_URL": "https://jonathandevoypcd.github.io/TopoSearch",
+    "MAIL_FROM": "TopoSearch <onboarding@resend.dev>",
+    "MONTHLY_QUOTA": "5",
     "ALLOWED_ORIGIN": "https://jonathandevoypcd.github.io"
   }
 }

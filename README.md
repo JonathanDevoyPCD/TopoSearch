@@ -34,15 +34,41 @@ defined in `worker/index.js`; deploy it once with the steps below.
    trailing slash, then commit and push the change. GitHub Pages will redeploy.
 6. Open the Pages site and download a PDF to verify the Worker is connected.
 
-The Worker only accepts `GET`, `HEAD`, and CORS preflight requests from this
-GitHub Pages origin. It only proxies PNG tiles from the fixed NGI host, for the
-supported map layers and zoom levels, within the Loerie-area bounding box. It
-does not accept arbitrary upstream URLs. Tile responses are cached by the
-browser for one day. Workers Free currently includes 100,000 requests per day;
-one full 50k sheet can request several hundred tiles. Monitor usage in the
-Cloudflare dashboard, and confirm NGI terms permit this use before sharing PDFs.
+The Worker accepts tile requests only from this GitHub Pages origin, only with a
+valid short-lived print token (issued by `POST /pdf/start`, which consumes one
+map generation), and only for PNG tiles from the fixed NGI host for the supported
+layers and zoom levels within South Africa. It does not accept arbitrary
+upstream URLs. Tiles are cached at Cloudflare and in the browser for 30 days,
+and each IP is rate limited. Workers Free currently includes 100,000 requests
+per day; one full 50k sheet can request several hundred tiles. Monitor usage in
+the Cloudflare dashboard, and confirm NGI terms permit this use before sharing PDFs.
 
 Local PDF generation continues to use `node .\serve.js`.
+
+### Accounts, quota and password reset
+
+The site requires sign-in (name, email, password). Accounts live in a Cloudflare D1
+database (`worker/schema.sql`); passwords are salted PBKDF2 hashes. Each account gets
+`MONTHLY_QUOTA` map generations per calendar month (default 5, set in `wrangler.jsonc`);
+quota is enforced by the Worker, not the browser. Race map (TIF) downloads are only
+hidden behind the sign-in screen: the GitHub release files themselves are public.
+
+One-time setup:
+
+1. `npx wrangler d1 create toposearch` and put the `database_id` in `wrangler.jsonc`.
+2. `npx wrangler d1 execute toposearch --remote --file worker/schema.sql`
+3. `npx wrangler secret put SESSION_SECRET` (any long random string).
+4. For reset emails: create a [Resend](https://resend.com) API key, run
+   `npx wrangler secret put RESEND_API_KEY`, and set `MAIL_FROM` in `wrangler.jsonc`.
+   Without a verified sending domain Resend only delivers to your own account email.
+5. `npm run worker:deploy`
+
+To run the UI against a local Worker: put `SESSION_SECRET` and
+`ALLOWED_ORIGIN=http://127.0.0.1:8000` in `.dev.vars`, apply the schema with
+`--local`, run `npx wrangler dev --port 8787`, and open the site with
+`?api=http://127.0.0.1:8787`. Without `?api=` the local site skips sign-in.
+
+The interface is styled with Tailwind CSS loaded from its CDN (`index.html`).
 
 ## Tools
 
