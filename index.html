@@ -231,6 +231,14 @@
               <input id="sheet-index" type="checkbox" checked class="h-4 w-4 rounded border-stone-300 text-emerald-700 focus:ring-emerald-600">
               Outline selected sheet
             </label>
+            <div class="w-full sm:w-56">
+              <label class="label" for="map-blend">Map blend</label>
+              <input id="map-blend" class="w-full accent-emerald-700" type="range" min="0" max="100" value="0" aria-valuetext="100% topographic, 0% aerial imagery" aria-describedby="blend-description">
+              <div id="blend-description" class="flex justify-between text-xs text-stone-500">
+                <span>Topographic</span><span>Aerial</span>
+              </div>
+              <p class="mt-1 text-xs text-stone-500">NGI aerial imagery; coverage and dates vary.</p>
+            </div>
 
             <div class="ml-auto flex flex-wrap items-center gap-2">
               <button class="btn-primary" id="print-map" type="button" disabled>
@@ -273,9 +281,22 @@
           </aside>
         </div>
 
+        <dialog id="print-choice" aria-labelledby="print-choice-title" class="w-[min(90vw,28rem)] rounded-xl bg-white p-6 text-stone-900 shadow-xl">
+          <h2 id="print-choice-title" class="text-lg font-semibold">Choose a PDF map</h2>
+          <p class="mt-2 text-sm text-stone-600">Choose the imagery to print. The map blend slider only changes the on-screen view.</p>
+          <p class="mt-2 text-sm text-stone-600">Aerial imagery dates vary. PDF exports use reduced detail compared with the closest map zoom; the 250k PDF is coarser. Downloads are free.</p>
+          <p class="mt-2 text-sm text-stone-600">Each PDF uses one map generation, even if canceled or unsuccessful.</p>
+          <form method="dialog" class="mt-5 flex flex-wrap gap-2">
+            <button class="btn-primary" value="topographic">Topographic PDF</button>
+            <button class="btn-secondary" value="satellite">Aerial PDF</button>
+            <button class="btn-secondary" value="cancel">Cancel</button>
+          </form>
+        </dialog>
+
         <footer class="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1 pb-2 text-xs text-stone-500">
           <p class="max-w-3xl">
-            Map imagery: State Copyright, Chief Directorate: National Geo-spatial Information (NGI).
+            Aerial imagery: State Copyright &copy; <span id="aerial-copyright-year"></span> Chief Directorate: National Geo-spatial Information.
+            Topographic map imagery: State Copyright, Chief Directorate: National Geo-spatial Information (NGI).
             Use the online service or locally supplied tiles only under the applicable NGI terms.
           </p>
           <p class="whitespace-nowrap tabular-nums">Cursor: <output id="coordinates">—</output></p>

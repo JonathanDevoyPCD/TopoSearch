@@ -72,6 +72,24 @@ The interface is styled with Tailwind CSS loaded from its CDN (`index.html`).
 
 ## Tools
 
+**Map blend** fades between NGI topographic maps and the
+[NGI aerial imagery viewer](https://aerial.openstreetmap.org.za/). NGI describes
+its newer aerial imagery as 25 cm ground sample distance; coverage, capture
+dates and actual detail vary by location. Attribution: State Copyright ©
+[Year] Chief Directorate: National Geo-spatial Information. The project owner
+has confirmed permission for display and PDF downloads; downloads must be free.
+Do not assume that this permission applies to other projects or operators.
+
+The PDF button asks whether to export topographic or aerial imagery; the
+on-screen blend does not change the PDF. Aerial exports use tiles at zoom 15 for
+1:50,000 and zoom 13 for 1:250,000 to limit requests and browser memory. These
+PDFs have less detail than the highest on-screen zoom or the underlying imagery,
+and 1:250,000 exports are coarser. Aerial PDFs carry the imagery attribution
+and do not claim that topographic symbols appear on the image. Areas where the
+aerial service returns no imagery are shown in grey and identified in the PDF;
+an export fails if the entire selected area has no imagery.
+Each PDF generation uses the existing monthly quota, even if canceled or failed.
+
 The tool drawer (top right of the map) has two tools:
 
 - **Select** – click a sheet to select it for download.

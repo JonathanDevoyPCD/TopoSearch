@@ -4,6 +4,10 @@
   display: none !important;
 }
 
+#print-choice::backdrop {
+  background: rgba(28, 25, 23, 0.55);
+}
+
 .auth-tab[aria-selected="true"] {
   background: #fff;
   color: #065f46;

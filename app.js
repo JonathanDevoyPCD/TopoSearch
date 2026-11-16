@@ -1,7 +1,13 @@
 import { magvar, MODEL_EPOCH, MODEL_VALID_UNTIL } from "./vendor/magvar/magvar.js";
 import { onQuotaChange, quotaRemaining, startGeneration } from "./auth.js";
+import { decodeTileResponse } from "./tile-image.js";
 
 const NGI_ROOT = "https://htonl.dev.openstreetmap.org/ngi-tiles";
+const SATELLITE_ROOT = "https://aerial.openstreetmap.org.za/layer/ngi-aerial";
+const SATELLITE_ZOOM = { "50k": 15, "250k": 13 };
+const copyrightYear = new Date().getFullYear();
+const SATELLITE_ATTRIBUTION =
+  `State Copyright &copy; ${copyrightYear} <a href="https://ngi.dlrrd.gov.za/">Chief Directorate: National Geo-spatial Information</a>`;
 const LOCAL_TILE_ROOT = "./tiles";
 const SHEET_INDEX_URLS = {
   "50k": "./data/sheets-50k.geojson",
@@ -41,12 +47,14 @@ const drawerToggle = document.querySelector("#drawer-toggle");
 const toolButtons = document.querySelectorAll(".tool-button");
 const toolHint = document.querySelector("#tool-hint");
 const clearFrameButton = document.querySelector("#clear-frame");
+const blendSlider = document.querySelector("#map-blend");
+const printChoice = document.querySelector("#print-choice");
 
 const map = L.map("map", {
   center: INITIAL_CENTER,
   zoom: INITIAL_ZOOM,
   minZoom: 3,
-  maxZoom: 15,
+  maxZoom: 20,
   zoomControl: true
 });
 
@@ -55,11 +63,27 @@ const attribution =
 // NGI tiles exist only for South Africa; the rest of the world uses a faded neutral base map.
 const NGI_COVERAGE = L.latLngBounds([-35.2, 16.2], [-21.9, 33.1]);
 L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-  maxZoom: 15,
+  maxZoom: 20,
   maxNativeZoom: 19,
   opacity: 0.5,
   attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
 }).addTo(map);
+
+map.createPane("satellite");
+map.getPane("satellite").style.zIndex = "210";
+map.createPane("topographic");
+map.getPane("topographic").style.zIndex = "220";
+const satelliteLayer = L.tileLayer(`${SATELLITE_ROOT}/{z}/{x}/{y}.png`, {
+  maxZoom: 20,
+  maxNativeZoom: 20,
+  bounds: NGI_COVERAGE,
+  pane: "satellite",
+  attribution: SATELLITE_ATTRIBUTION
+});
+satelliteLayer.on("tileerror", () => {
+  setStatus("Aerial imagery could not be loaded. Please try again later.", "error");
+});
+document.querySelector("#aerial-copyright-year").textContent = copyrightYear;
 
 let tileLayer;
 let sheetLayer;
@@ -95,12 +119,25 @@ function createTileLayer() {
   const layerName = layerSelect.value;
   return L.tileLayer(tileUrl(layerName), {
     tms: true,
-    maxZoom: 15,
+    maxZoom: 20,
     maxNativeZoom: NATIVE_ZOOM[layerName],
     bounds: NGI_COVERAGE,
-    attribution
+    pane: "topographic",
+    attribution,
+    opacity: 1 - Number(blendSlider.value) / 100
   });
 }
+
+blendSlider.addEventListener("input", () => {
+  const blend = Number(blendSlider.value);
+  if (blend > 0 && !map.hasLayer(satelliteLayer)) {
+    satelliteLayer.addTo(map);
+  } else if (blend === 0 && map.hasLayer(satelliteLayer)) {
+    map.removeLayer(satelliteLayer);
+  }
+  tileLayer.setOpacity(1 - blend / 100);
+  blendSlider.setAttribute("aria-valuetext", `${100 - blend}% topographic, ${blend}% aerial imagery`);
+});
 
 function replaceTileLayer() {
   tileErrors = 0;
@@ -521,7 +558,10 @@ function tileY(latitude, zoom) {
   return ((1 - mercatorY / Math.PI) / 2) * 2 ** zoom;
 }
 
-function tileSourceUrl(layerName, zoom, x, y, tileSource) {
+function tileSourceUrl(layerName, zoom, x, y, tileSource, imagery) {
+  if (imagery === "satellite") {
+    return `${SATELLITE_ROOT}/${zoom}/${x}/${y}.png`;
+  }
   const tmsRow = 2 ** zoom - 1 - y;
   if (tileSource === "offline") {
     return `${LOCAL_TILE_ROOT}/${layerName}/${zoom}/${x}/${tmsRow}.png`;
@@ -532,18 +572,15 @@ function tileSourceUrl(layerName, zoom, x, y, tileSource) {
   return `/ngi-proxy/${layerName}/${zoom}/${x}/${tmsRow}.png`;
 }
 
-async function downloadTile(url, signal) {
+async function downloadTile(url, signal, imagery) {
   const headers = printToken && url.startsWith(PDF_WORKER_BASE_URL) ? { Authorization: `Bearer ${printToken}` } : undefined;
   const response = await fetch(url, { signal, headers });
-  if (!response.ok) {
-    throw new Error(`Tile request failed (${response.status}) for ${url}`);
-  }
-  return createImageBitmap(await response.blob());
+  return decodeTileResponse(response, url, imagery === "satellite");
 }
 
-async function renderSheetCanvas(feature, layerName, tileSource, signal) {
+async function renderSheetCanvas(feature, layerName, tileSource, signal, imagery) {
   const bounds = boundsForFeature(feature);
-  const zoom = NATIVE_ZOOM[layerName];
+  const zoom = imagery === "satellite" ? SATELLITE_ZOOM[layerName] : NATIVE_ZOOM[layerName];
   const tileCountAtZoom = 2 ** zoom;
   const westTile = ((bounds.west + 180) / 360) * tileCountAtZoom;
   const eastTile = ((bounds.east + 180) / 360) * tileCountAtZoom;
@@ -562,6 +599,10 @@ async function renderSheetCanvas(feature, layerName, tileSource, signal) {
   if (!context) {
     throw new Error("This browser could not create a map image canvas.");
   }
+  if (imagery === "satellite") {
+    context.fillStyle = "#e7e5e4";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+  }
 
   const coordinates = [];
   for (let y = firstY; y <= lastY; y += 1) {
@@ -570,6 +611,7 @@ async function renderSheetCanvas(feature, layerName, tileSource, signal) {
     }
   }
   let completed = 0;
+  let missingTiles = 0;
   let nextTile = 0;
   let tileError = null;
   const workers = Array.from({ length: 8 }, async () => {
@@ -580,17 +622,21 @@ async function renderSheetCanvas(feature, layerName, tileSource, signal) {
         }
         const { x, y } = coordinates[nextTile];
         nextTile += 1;
-        const bitmap = await downloadTile(tileSourceUrl(layerName, zoom, x, y, tileSource), signal);
-        context.drawImage(
-          bitmap,
-          x * TILE_SIZE - westPixel,
-          y * TILE_SIZE - northPixel,
-          TILE_SIZE,
-          TILE_SIZE
-        );
-        bitmap.close();
+        const bitmap = await downloadTile(tileSourceUrl(layerName, zoom, x, y, tileSource, imagery), signal, imagery);
+        if (bitmap) {
+          context.drawImage(
+            bitmap,
+            x * TILE_SIZE - westPixel,
+            y * TILE_SIZE - northPixel,
+            TILE_SIZE,
+            TILE_SIZE
+          );
+          bitmap.close();
+        } else {
+          missingTiles += 1;
+        }
         completed += 1;
-        setStatus(`Preparing full-resolution map: loaded ${completed} of ${coordinates.length} tiles.`);
+        setStatus(`Preparing ${imagery === "satellite" ? "aerial" : imagery} map: loaded ${completed} of ${coordinates.length} tiles.`);
       }
     } catch (error) {
       if (!signal.aborted) {
@@ -606,6 +652,9 @@ async function renderSheetCanvas(feature, layerName, tileSource, signal) {
   }
   if (signal.aborted) {
     throw new DOMException("PDF generation canceled.", "AbortError");
+  }
+  if (missingTiles === coordinates.length) {
+    throw new Error("No aerial imagery is available for the selected area.");
   }
 
   const jpeg = await new Promise((resolve, reject) => {
@@ -625,7 +674,8 @@ async function renderSheetCanvas(feature, layerName, tileSource, signal) {
     jpeg: new Uint8Array(await jpeg.arrayBuffer()),
     imageWidth,
     imageHeight,
-    bounds
+    bounds,
+    missingTiles
   };
 }
 
@@ -636,10 +686,11 @@ function mercatorY(latitude) {
 
 function pdfEscape(value) {
   return value
-    .replace(/[^\x20-\x7e]/g, "?")
+    .replace(/[^\x20-\x7e\u00a9]/g, "?")
     .replace(/\\/g, "\\\\")
     .replace(/\(/g, "\\(")
-    .replace(/\)/g, "\\)");
+    .replace(/\)/g, "\\)")
+    .replace(/\u00a9/g, "\\251");
 }
 
 function mmToPt(value) {
@@ -686,7 +737,7 @@ function makePdfContent({
 
   const margin = 14;
   text(lines.scaleHeader, margin, 19, 10, "F2");
-  text("SOUTH AFRICA | TOPOGRAPHIC", margin, 27, 6.5);
+  text(lines.satellite ? "SOUTH AFRICA | AERIAL" : "SOUTH AFRICA | TOPOGRAPHIC", margin, 27, 6.5);
   centeredText(lines.title.toUpperCase(), pageWidth / 2, 24, 17, "F2");
   rectangle(pageWidth - 93, 9, 79, 22, "0.25 0.25 0.25");
   text(lines.headerSheet, pageWidth - 89, 17, 7, "F2");
@@ -779,6 +830,14 @@ function makePdfContent({
 
   const legendTop = mapY + mapHeight + 14;
   line(margin, legendTop, pageWidth - margin, legendTop, 0.35);
+  if (lines.satellite) {
+    centeredText("NGI AERIAL IMAGERY", pageWidth / 2, legendTop + 7, 8, "F2");
+    centeredText("Imagery dates and coverage vary; PDF detail is limited by the export resolution.", pageWidth / 2, legendTop + 16, 7);
+    centeredText("Image is for reference only. Verify routes and conditions on the ground.", pageWidth / 2, legendTop + 23, 7);
+    if (lines.missingTiles) {
+      centeredText("Grey areas indicate missing aerial imagery.", pageWidth / 2, legendTop + 30, 7);
+    }
+  } else {
   centeredText("REFERENCE / VERKLARING", pageWidth / 2, legendTop + 7, 8, "F2");
   const legendColumns = [
     [
@@ -857,6 +916,7 @@ function makePdfContent({
   });
   const dividerX = margin + columnWidth + columnGap / 2;
   line(dividerX, legendTop + 10, dividerX, legendTop + 88, 0.2, "0.65 0.65 0.65");
+  }
 
   const detailsTop = legendTop + 94;
   line(margin, detailsTop, pageWidth - margin, detailsTop, 0.35);
@@ -1027,7 +1087,7 @@ function makePdfContent({
   const detailLines = [
     lines.subtitle,
     lines.extent,
-    `${lines.source} | Native raster zoom ${lines.sourceZoom}`,
+    `${lines.source} | ${lines.satellite ? "Raster" : "Native raster"} zoom ${lines.sourceZoom}`,
     "Coordinate frame: WGS84 latitude / longitude | Image projection: Web Mercator",
     `Magnetic declination: ${lines.declinationLabel} (${lines.declinationModel})`,
     lines.attribution,
@@ -1038,7 +1098,6 @@ function makePdfContent({
   });
   text(lines.legendNote, detailX, detailY + detailLines.length * 8, 5.8);
   text(lines.safety, detailX, detailY + (detailLines.length + 1) * 8, 5.8);
-
   return commands.join("\n");
 }
 
@@ -1052,7 +1111,7 @@ function assemblePdf(jpegBytes, imageWidth, imageHeight, pageWidth, pageHeight, 
       "/Resources << /XObject << /Im0 4 0 R >> /Font << /F1 5 0 R /F2 6 0 R >> >> /Contents 7 0 R >>"
     ),
     null,
-    encoder.encode("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"),
+    encoder.encode("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>"),
     encoder.encode("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>"),
     encoder.encode(`<< /Length ${encoder.encode(content).length} >>\nstream\n${content}\nendstream`)
   ];
@@ -1114,7 +1173,7 @@ function coverageLabel(bounds) {
   return `Sheets: ${shown}${codes.length > 8 ? ` +${codes.length - 8} more` : ""}`;
 }
 
-function buildPrintLines(feature, layerName, tileSource, bounds, generatedAt) {
+function buildPrintLines(feature, layerName, tileSource, bounds, generatedAt, imagery, missingTiles) {
   const { s: sheet, e: edition, y: year, custom } = feature.properties;
   const scale = MAP_SCALE[layerName];
   const scaleLabel = layerName === "50k" ? "50 000" : "250 000";
@@ -1132,15 +1191,20 @@ function buildPrintLines(feature, layerName, tileSource, bounds, generatedAt) {
   const declinationDirection = declination >= 0 ? "E" : "W";
   const source = tileSource === "online" ? "Online NGI tiles" : "Local offline tiles";
   const timestamp = generatedAt.toISOString().replace("T", " ").replace(/\.\d{3}Z$/, " UTC");
+  const satellite = imagery === "satellite";
   return {
     centerLatitude,
     scale,
-    sourceZoom: NATIVE_ZOOM[layerName],
+    sourceZoom: satellite ? SATELLITE_ZOOM[layerName] : NATIVE_ZOOM[layerName],
+    satellite,
+    missingTiles,
     custom,
     headerSheet: custom ? "CUSTOM FRAME" : `SHEET ${sheet}`,
-    headerEdition: custom ? "EDITION PER SOURCE SHEET" : `EDITION ${edition} | ${year}`,
+    headerEdition: satellite ? "AERIAL | DATE VARIES" : custom ? "EDITION PER SOURCE SHEET" : `EDITION ${edition} | ${year}`,
     title: custom ? "Custom map frame" : `${sheet}${sheetName(feature) ? ` - ${sheetName(feature)}` : ""}`,
-    subtitle: custom
+    subtitle: satellite
+      ? `NGI aerial imagery | ${custom ? "Custom frame" : `Sheet ${sheet}`}`
+      : custom
       ? `NGI 1:${scaleLabel} topographic map | Custom frame | ${coverageLabel(bounds)}`
       : `NGI 1:${scaleLabel} topographic map | Edition ${edition} (${year})`,
     extent:
@@ -1154,26 +1218,27 @@ function buildPrintLines(feature, layerName, tileSource, bounds, generatedAt) {
     declination,
     declinationLabel: `${Math.abs(declination).toFixed(2)} degrees ${declinationDirection}`,
     declinationModel: `WMM2025 ${generatedAt.toISOString().slice(0, 10)}`,
-    attribution: "State Copyright - Chief Directorate: National Geo-spatial Information (NGI).",
-    source: `Tile source: ${source} | htonl.dev.openstreetmap.org/ngi-tiles/`,
-    legendNote: "Reference symbols are generalized; check source-edition symbology.",
+    attribution: satellite ? `State Copyright © ${generatedAt.getFullYear()} Chief Directorate: National Geo-spatial Information` : "State Copyright - Chief Directorate: National Geo-spatial Information (NGI).",
+    source: satellite ? "Tile source: aerial.openstreetmap.org.za" : `Tile source: ${source} | htonl.dev.openstreetmap.org/ngi-tiles/`,
+    legendNote: satellite ? "Aerial image capture dates vary by location; verify currency." : "Reference symbols are generalized; check source-edition symbology.",
     safety: "Verify map currency and local conditions before navigation.",
     generated: `Generated ${timestamp}`
   };
 }
 
-async function createPrintPdf(feature, layerName, tileSource, signal) {
+async function createPrintPdf(feature, layerName, tileSource, signal, imagery) {
   if (!feature) {
     throw new Error("Select a map sheet before printing.");
   }
-  const { jpeg, imageWidth, imageHeight, bounds } = await renderSheetCanvas(
+  const { jpeg, imageWidth, imageHeight, bounds, missingTiles } = await renderSheetCanvas(
     feature,
     layerName,
     tileSource,
-    signal
+    signal,
+    imagery
   );
   const generatedAt = new Date();
-  const lines = buildPrintLines(feature, layerName, tileSource, bounds, generatedAt);
+  const lines = buildPrintLines(feature, layerName, tileSource, bounds, generatedAt, imagery, missingTiles);
   const centerLatitude = lines.centerLatitude;
   const cosLatitude = Math.cos((centerLatitude * Math.PI) / 180);
   const westMercator = EARTH_RADIUS_METERS * ((bounds.west * Math.PI) / 180);
@@ -1202,10 +1267,23 @@ async function createPrintPdf(feature, layerName, tileSource, signal) {
     selectedFeature: feature,
     layerName
   });
-  return assemblePdf(jpeg, imageWidth, imageHeight, pageWidth, pageHeight, content);
+  return { pdf: assemblePdf(jpeg, imageWidth, imageHeight, pageWidth, pageHeight, content), missingTiles };
 }
 
-printButton.addEventListener("click", async () => {
+printButton.addEventListener("click", () => {
+  if (!printController && activeTarget()) {
+    printChoice.returnValue = "";
+    printChoice.showModal();
+  }
+});
+
+printChoice.querySelector("form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const imagery = event.submitter?.value;
+  printChoice.close();
+  if (imagery !== "topographic" && imagery !== "satellite") {
+    return;
+  }
   const feature = activeTarget();
   if (printController || !feature) {
     return;
@@ -1220,17 +1298,18 @@ printButton.addEventListener("click", async () => {
   const tileSource = sourceSelect.value;
   try {
     printToken = await startGeneration();
-    const pdf = await createPrintPdf(feature, fileLayer, tileSource, printController.signal);
+    const { pdf, missingTiles } = await createPrintPdf(feature, fileLayer, tileSource, printController.signal, imagery);
     if (printController.signal.aborted) {
       return;
     }
     const url = URL.createObjectURL(pdf);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = `TopoSearch_${fileSheet}_${fileLayer}_${new Date().toISOString().slice(0, 10)}.pdf`;
+    anchor.download = `TopoSearch_${fileSheet}_${fileLayer}${imagery === "satellite" ? "_Aerial" : ""}_${new Date().toISOString().slice(0, 10)}.pdf`;
     anchor.click();
     setTimeout(() => URL.revokeObjectURL(url), 60000);
-    setStatus(`Downloaded full-resolution print PDF for ${feature.properties.custom ? "the free frame" : `sheet ${fileSheet}`}.`);
+    const missingNote = missingTiles ? ` ${missingTiles} tiles have no aerial imagery and are shown in grey.` : "";
+    setStatus(`Downloaded ${imagery === "satellite" ? "aerial" : imagery} print PDF for ${feature.properties.custom ? "the free frame" : `sheet ${fileSheet}`}.${missingNote}`);
   } catch (error) {
     if (error.name === "AbortError") {
       setStatus("PDF generation canceled.");
