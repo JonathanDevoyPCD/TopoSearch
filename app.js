@@ -1,10 +1,11 @@
 import { magvar, MODEL_EPOCH, MODEL_VALID_UNTIL } from "./vendor/magvar/magvar.js";
 import { onQuotaChange, quotaRemaining, startGeneration } from "./auth.js";
 import { decodeTileResponse } from "./tile-image.js";
+import { PRINT_SCALE, paperLayout, frameGeometry, clampFrameCenter, mercatorY, rasterZoom } from "./print-layout.js";
 
 const NGI_ROOT = "https://htonl.dev.openstreetmap.org/ngi-tiles";
 const SATELLITE_ROOT = "https://aerial.openstreetmap.org.za/layer/ngi-aerial";
-const SATELLITE_ZOOM = { "50k": 15, "250k": 13 };
+const SATELLITE_ZOOM = 15;
 const copyrightYear = new Date().getFullYear();
 const SATELLITE_ATTRIBUTION =
   `State Copyright &copy; ${copyrightYear} <a href="https://ngi.dlrrd.gov.za/">Chief Directorate: National Geo-spatial Information</a>`;
@@ -15,17 +16,12 @@ const SHEET_INDEX_URLS = {
 };
 // Matches the Worker's allowed tile area (worker/index.js); PDFs outside it cannot be built on GitHub Pages.
 const PDF_AREA = { west: 16, east: 33.5, south: -35, north: -22 };
-// Free Frame size in degrees: the same footprint as a 1:50,000 sheet (portrait on paper);
-// 1:250,000 uses a typical landscape sheet footprint.
-const FRAME_SIZE = { "50k": { width: 0.25, height: 0.25 }, "250k": { width: 2, height: 1 } };
 const FULLMAPS_INDEX_URL = "./data/fullmaps-index.json";
 const TARGET_SHEET = "3325CC";
 const INITIAL_CENTER = [-33.875, 25.125];
 const INITIAL_ZOOM = 10;
 const TILE_SIZE = 256;
-const EARTH_RADIUS_METERS = 6378137;
 const NATIVE_ZOOM = { "50k": 15, "250k": 12 };
-const MAP_SCALE = { "50k": 50000, "250k": 250000 };
 const PDF_WORKER_BASE_URL = "https://toposearch-ngi-proxy.jonathan-f66.workers.dev";
 const IS_GITHUB_PAGES =
   window.location.hostname.endsWith(".github.io") && window.location.hostname !== "localhost";
@@ -33,6 +29,7 @@ const IS_GITHUB_PAGES =
 const statusElement = document.querySelector("#map-status");
 const layerSelect = document.querySelector("#map-layer");
 const sourceSelect = document.querySelector("#tile-source");
+const paperSelect = document.querySelector("#paper-size");
 const sheetIndexToggle = document.querySelector("#sheet-index");
 const coordinateOutput = document.querySelector("#coordinates");
 const selectedSheetElement = document.querySelector("#selected-sheet");
@@ -40,12 +37,9 @@ const selectedSheetNameElement = document.querySelector("#selected-sheet-name");
 const printButton = document.querySelector("#print-map");
 const cancelPrintButton = document.querySelector("#cancel-print");
 const raceMapButton = document.querySelector("#race-map");
+const raceMapButtonLabel = document.querySelector("#race-map-label");
 const raceMapButtonSize = document.querySelector("#race-map-size");
 const raceWorldLink = document.querySelector("#race-map-world");
-const toolDrawer = document.querySelector("#tool-drawer");
-const drawerToggle = document.querySelector("#drawer-toggle");
-const toolButtons = document.querySelectorAll(".tool-button");
-const toolHint = document.querySelector("#tool-hint");
 const clearFrameButton = document.querySelector("#clear-frame");
 const blendSlider = document.querySelector("#map-blend");
 const printChoice = document.querySelector("#print-choice");
@@ -73,6 +67,8 @@ map.createPane("satellite");
 map.getPane("satellite").style.zIndex = "210";
 map.createPane("topographic");
 map.getPane("topographic").style.zIndex = "220";
+map.createPane("paper-preview");
+map.getPane("paper-preview").style.zIndex = "450";
 const satelliteLayer = L.tileLayer(`${SATELLITE_ROOT}/{z}/{x}/{y}.png`, {
   maxZoom: 20,
   maxNativeZoom: 20,
@@ -88,21 +84,23 @@ document.querySelector("#aerial-copyright-year").textContent = copyrightYear;
 let tileLayer;
 let sheetLayer;
 let sheetCollections = {};
-let selectedSheets = {};
 let selectedSheet = null;
 let tileErrors = 0;
 let printController = null;
 let printToken = null;
 let fullMapsBase = "";
-let toolMode = "select";
 let freeFrame = null;
 let frameCenter = null;
 let frameRect = null;
 let frameHandle = null;
-let downloadAreaLayer = null;
+let paperRect = null;
+let paperMask = null;
+let printLabel = null;
+let suppressFrameClick = false;
+let suppressFrameClickTimer = null;
 
 function activeTarget() {
-  return toolMode === "frame" ? freeFrame : selectedSheet;
+  return freeFrame;
 }
 
 function setStatus(message, state = "info") {
@@ -187,13 +185,14 @@ function formatMegabytes(bytes) {
 }
 
 function updateRaceMapButton() {
-  const race = layerSelect.value === "50k" && fullMapsBase ? activeTarget()?.properties.race : null;
+  const race = fullMapsBase ? selectedSheet?.properties.race : null;
   raceMapButton.hidden = !race;
   raceWorldLink.hidden = !race;
   if (!race) {
     return;
   }
   const url = `${fullMapsBase}/${encodeURIComponent(race.file)}`;
+  raceMapButtonLabel.textContent = `Original race map ${selectedSheet.properties.s} (TIF)`;
   raceMapButton.href = url;
   raceMapButton.setAttribute("download", race.file);
   raceMapButton.title = `${race.file} · ${race.pixels.join(" × ")} px · edition ${race.edition} (${race.year})`;
@@ -205,15 +204,16 @@ function updateSelectedSheetDetails() {
   const target = activeTarget();
   updateRaceMapButton();
   if (!target) {
-    selectedSheetElement.textContent = toolMode === "frame" ? "No frame" : "No sheet";
-    selectedSheetNameElement.textContent = toolMode === "frame" ? "Click the map" : "";
+    selectedSheetElement.textContent = "No frame";
+    selectedSheetNameElement.textContent = "Click the map";
     printButton.disabled = true;
     printButton.title = "";
     return;
   }
   if (target.properties.custom) {
     selectedSheetElement.textContent = "Free frame";
-    selectedSheetNameElement.textContent = `${Math.abs(frameCenter.lat).toFixed(3)}° S, ${frameCenter.lng.toFixed(3)}° E`;
+    const sheet = selectedSheet ? ` · ${selectedSheet.properties.s}` : "";
+    selectedSheetNameElement.textContent = `${Math.abs(frameCenter.lat).toFixed(3)}° S, ${frameCenter.lng.toFixed(3)}° E${sheet}`;
   } else {
     selectedSheetElement.textContent = target.properties.s;
     selectedSheetNameElement.textContent = sheetName(target);
@@ -234,36 +234,13 @@ function renderSheetLayer() {
     map.removeLayer(sheetLayer);
     sheetLayer = null;
   }
-  if (toolMode === "select" && selectedSheet && sheetIndexToggle.checked) {
+  if (selectedSheet && sheetIndexToggle.checked) {
     sheetLayer = L.geoJSON(selectedSheet, { style: styleSheet, interactive: false }).addTo(map);
   }
 }
-function sheetPopupHtml(feature) {
-  const { s: sheet, e: edition, y: year } = feature.properties;
-  const name = sheetName(feature);
-  const downloads = [isPdfAvailable(feature) && "print PDF", feature.properties.race && "race map"].filter(Boolean);
-  return (
-    `<strong>Sheet ${sheet}${name ? ` · ${name}` : ""}</strong><br>Edition ${edition} (${year})<br>` +
-    (downloads.length ? `Downloads: ${downloads.join(", ")}` : "View only")
-  );
-}
-
-function selectSheet(feature, fit = true, popupLatLng = null) {
-  selectedSheet = feature;
-  selectedSheets[layerSelect.value] = feature;
-  updateSelectedSheetDetails();
-  renderSheetLayer();
-  if (fit) {
-    map.fitBounds(L.geoJSON(feature).getBounds(), { padding: [32, 32] });
-  }
-  if (popupLatLng) {
-    L.popup().setLatLng(popupLatLng).setContent(sheetPopupHtml(feature)).openOn(map);
-  }
-  setStatus(`Selected sheet ${feature.properties.s}, edition ${feature.properties.e} (${feature.properties.y}).`);
-}
 
 function sheetAt(latlng) {
-  const collection = sheetCollections[layerSelect.value];
+  const collection = sheetCollections["50k"];
   if (!collection) {
     return null;
   }
@@ -281,29 +258,22 @@ function sheetAt(latlng) {
 }
 
 map.on("click", (event) => {
-  if (toolMode === "frame") {
-    placeFrame(event.latlng);
+  if (suppressFrameClick) {
+    suppressFrameClick = false;
     return;
   }
-  const feature = sheetAt(event.latlng);
-  if (feature) {
-    selectSheet(feature, false, event.latlng);
-  }
+  placeFrame(event.latlng);
 });
 
 function downloadArea() {
   return IS_GITHUB_PAGES ? PDF_AREA : { west: 16.2, east: 33.1, south: -35.2, north: -21.9 };
 }
 
-function frameFeature(center, layerName) {
-  const { width, height } = FRAME_SIZE[layerName];
-  const west = center.lng - width / 2;
-  const east = center.lng + width / 2;
-  const south = center.lat - height / 2;
-  const north = center.lat + height / 2;
+function frameFeature(center, size) {
+  const { west, east, south, north } = frameGeometry(center, size).map;
   return {
     type: "Feature",
-    properties: { s: "CUSTOM", custom: true, e: "", y: "" },
+    properties: { s: "CUSTOM", custom: true, e: "", y: "", centerLat: center.lat, centerLng: center.lng },
     geometry: {
       type: "Polygon",
       coordinates: [[[west, south], [west, north], [east, north], [east, south], [west, south]]]
@@ -311,27 +281,23 @@ function frameFeature(center, layerName) {
   };
 }
 
-function clampFrameCenter(center, layerName) {
-  const { width, height } = FRAME_SIZE[layerName];
-  const area = downloadArea();
-  return L.latLng(
-    Math.min(Math.max(center.lat, area.south + height / 2), area.north - height / 2),
-    Math.min(Math.max(center.lng, area.west + width / 2), area.east - width / 2)
-  );
-}
-
-function frameBounds() {
-  const { west, east, south, north } = boundsForFeature(freeFrame);
+function leafletBounds({ west, east, south, north }) {
   return L.latLngBounds([south, west], [north, east]);
 }
 
 function setFrameCenter(center, { moveHandle = true } = {}) {
-  frameCenter = clampFrameCenter(center, layerSelect.value);
-  freeFrame = frameFeature(frameCenter, layerSelect.value);
-  frameRect?.setBounds(frameBounds());
+  frameCenter = L.latLng(clampFrameCenter(center, paperSelect.value, downloadArea()));
+  const geometry = frameGeometry(frameCenter, paperSelect.value);
+  freeFrame = frameFeature(frameCenter, paperSelect.value);
+  selectedSheet = sheetAt(frameCenter);
+  frameRect?.setBounds(leafletBounds(geometry.map));
+  paperRect?.setBounds(leafletBounds(geometry.paper));
+  paperMask?.setLatLngs(paperMaskRings(geometry));
+  printLabel?.setLatLng([geometry.map.north, geometry.map.west]);
   if (moveHandle) {
     frameHandle?.setLatLng(frameCenter);
   }
+  renderSheetLayer();
   updateSelectedSheetDetails();
   setStatus(
     `Free frame centred at ${Math.abs(frameCenter.lat).toFixed(4)}° S, ${frameCenter.lng.toFixed(4)}° E. Drag it to adjust.`
@@ -349,28 +315,70 @@ function startFrameDrag(event) {
     map.off("mousemove", move);
     document.removeEventListener("mouseup", stop);
     map.dragging.enable();
+    suppressFrameClick = true;
+    clearTimeout(suppressFrameClickTimer);
+    suppressFrameClickTimer = setTimeout(() => {
+      suppressFrameClick = false;
+    }, 0);
   };
   map.on("mousemove", move);
   document.addEventListener("mouseup", stop);
 }
 
+function paperMaskRings({ paper, map: printed }) {
+  const ring = ({ south, west, north, east }) =>
+    [[south, west], [north, west], [north, east], [south, east]];
+  return [ring(paper), ring(printed)];
+}
+
 function renderFrame() {
   frameRect?.remove();
   frameHandle?.remove();
+  paperRect?.remove();
+  paperMask?.remove();
+  printLabel?.remove();
   frameRect = null;
   frameHandle = null;
-  if (toolMode !== "frame" || !freeFrame) {
+  paperRect = null;
+  paperMask = null;
+  printLabel = null;
+  if (!freeFrame) {
     return;
   }
-  frameRect = L.rectangle(frameBounds(), {
+  const geometry = frameGeometry(frameCenter, paperSelect.value);
+  paperMask = L.polygon(paperMaskRings(geometry), {
+    pane: "paper-preview",
+    stroke: false,
+    fillColor: "#292524",
+    fillOpacity: 0.18,
+    interactive: false
+  }).addTo(map);
+  paperRect = L.rectangle(leafletBounds(geometry.paper), {
+    pane: "paper-preview",
+    color: "#57534e",
+    weight: 2,
+    dashArray: "6 5",
+    fill: false,
+    bubblingMouseEvents: false,
+    className: "free-frame"
+  }).addTo(map);
+  paperRect.on("mousedown", startFrameDrag);
+  frameRect = L.rectangle(leafletBounds(geometry.map), {
+    pane: "paper-preview",
     color: "#d14d2a",
     weight: 3,
     fillColor: "#f0b27e",
-    fillOpacity: 0.18,
+    fillOpacity: 0.08,
     bubblingMouseEvents: false,
     className: "free-frame"
   }).addTo(map);
   frameRect.on("mousedown", startFrameDrag);
+  printLabel = L.marker([geometry.map.north, geometry.map.west], {
+    pane: "paper-preview",
+    interactive: false,
+    keyboard: false,
+    icon: L.divIcon({ className: "print-area-watermark", html: "PRINTED MAP", iconSize: [100, 22], iconAnchor: [-6, -6] })
+  }).addTo(map);
   frameHandle = L.marker(frameCenter, {
     draggable: true,
     keyboard: false,
@@ -387,67 +395,32 @@ function placeFrame(latlng) {
     setStatus("Free frames can only be placed inside the dashed downloadable area.", "error");
     return;
   }
-  frameCenter = clampFrameCenter(latlng, layerSelect.value);
-  freeFrame = frameFeature(frameCenter, layerSelect.value);
+  setFrameCenter(latlng);
   renderFrame();
-  updateSelectedSheetDetails();
   setStatus(
     `Free frame placed at ${Math.abs(frameCenter.lat).toFixed(4)}° S, ${frameCenter.lng.toFixed(4)}° E. Drag it to adjust.`
   );
 }
 
-function setTool(tool) {
-  toolMode = tool;
-  for (const button of toolButtons) {
-    const active = button.dataset.tool === tool;
-    button.setAttribute("aria-checked", String(active));
-    button.classList.toggle("active", active);
-  }
-  map.closePopup();
-  map.getContainer().classList.toggle("frame-mode", tool === "frame");
-  clearFrameButton.hidden = tool !== "frame";
-  downloadAreaLayer?.remove();
-  downloadAreaLayer = null;
-  if (tool === "frame") {
-    const area = downloadArea();
-    downloadAreaLayer = L.rectangle([[area.south, area.west], [area.north, area.east]], {
-      color: "#597343",
-      weight: 2,
-      dashArray: "8 6",
-      fill: false,
-      interactive: false
-    }).addTo(map);
-    toolHint.textContent =
-      "Click inside the dashed area to place a fixed-size frame, then drag it (or its ✥ handle) to position it.";
-    setStatus(freeFrame ? "Drag the free frame to adjust it." : "Free Frame: click the map to place a frame.");
-  } else {
-    toolHint.textContent = "Click a sheet to select it for download.";
-    if (selectedSheet) {
-      setStatus(`Selected sheet ${selectedSheet.properties.s}, edition ${selectedSheet.properties.e} (${selectedSheet.properties.y}).`);
-    }
-  }
-  renderSheetLayer();
-  renderFrame();
-  updateSelectedSheetDetails();
-}
-
-for (const button of toolButtons) {
-  button.addEventListener("click", () => setTool(button.dataset.tool));
-}
-
 clearFrameButton.addEventListener("click", () => {
   freeFrame = null;
   frameCenter = null;
+  selectedSheet = null;
   renderFrame();
+  renderSheetLayer();
   updateSelectedSheetDetails();
   setStatus("Free frame cleared. Click the map to place a new one.");
 });
 
-drawerToggle.addEventListener("click", () => {
-  const open = toolDrawer.dataset.open !== "true";
-  toolDrawer.dataset.open = String(open);
-  drawerToggle.setAttribute("aria-expanded", String(open));
-});
+map.getContainer().classList.add("frame-mode");
+const area = downloadArea();
+L.rectangle([[area.south, area.west], [area.north, area.east]], {
+  color: "#597343",
+  weight: 2,
+  dashArray: "8 6",
+  fill: false,
+  interactive: false
+}).addTo(map);
 // Links each 50k sheet to its scanned original. Combined sheets are matched regardless of code order.
 async function attachFullMaps(collection) {
   try {
@@ -486,23 +459,14 @@ async function loadSheetIndex() {
     sheetCollections = Object.fromEntries(loadedCollections);
     await attachFullMaps(sheetCollections["50k"]);
 
-    for (const [layerName, collection] of Object.entries(sheetCollections)) {
-      const target = collection.features.find((feature) => feature.properties.s === TARGET_SHEET);
-      selectedSheets[layerName] = target || collection.features[0] || null;
+    if (!sheetCollections["50k"].features.length) {
+      throw new Error("No 1:50,000 map sheets are available.");
     }
-
-    selectedSheet = selectedSheets[layerSelect.value];
-    if (!selectedSheet) {
-      throw new Error(`No map sheets are available for the ${layerSelect.value} layer.`);
-    }
-    updateSelectedSheetDetails();
-    renderSheetLayer();
-    const selectedDetails =
-      `Selected ${selectedSheet.properties.s}, edition ${selectedSheet.properties.e} (${selectedSheet.properties.y}).`;
+    placeFrame(L.latLng(INITIAL_CENTER));
     setStatus(
       IS_GITHUB_PAGES && !PDF_WORKER_BASE_URL
-        ? `Online map ready. ${selectedDetails} ${PDF_WORKER_BASE_URL ? "PDF downloads use the Cloudflare Worker." : "Deploy the Cloudflare Worker and configure its URL to enable PDF downloads."}`
-        : `Sheet index loaded. ${selectedDetails}`
+        ? "Deploy the Cloudflare Worker and configure its URL to enable PDF downloads."
+        : "Click or drag the frame to select an area. The inner outline is the printed map."
     );
   } catch (error) {
     setStatus(`Could not load the local sheet index: ${error.message}`, "error");
@@ -511,28 +475,22 @@ async function loadSheetIndex() {
 
 function handleLayerChange() {
   replaceTileLayer();
-  const storedSelection = selectedSheets[layerSelect.value];
-  if (storedSelection) {
-    selectSheet(storedSelection, false);
-  } else {
-    selectedSheet = null;
-    updateSelectedSheetDetails();
-    renderSheetLayer();
-  }
+}
+
+layerSelect.addEventListener("change", handleLayerChange);
+paperSelect.addEventListener("change", () => {
   if (freeFrame) {
     setFrameCenter(frameCenter);
     renderFrame();
   }
-}
-
-layerSelect.addEventListener("change", handleLayerChange);
+});
 sourceSelect.addEventListener("change", replaceTileLayer);
 sheetIndexToggle.addEventListener("change", renderSheetLayer);
 
 document.querySelector("#focus-sheet").addEventListener("click", () => {
   const target = activeTarget();
   if (target) {
-    map.fitBounds(L.geoJSON(target).getBounds(), { padding: [32, 32] });
+    map.fitBounds(leafletBounds(frameGeometry(frameCenter, paperSelect.value).paper), { padding: [32, 32] });
   }
 });
 
@@ -580,7 +538,7 @@ async function downloadTile(url, signal, imagery) {
 
 async function renderSheetCanvas(feature, layerName, tileSource, signal, imagery) {
   const bounds = boundsForFeature(feature);
-  const zoom = imagery === "satellite" ? SATELLITE_ZOOM[layerName] : NATIVE_ZOOM[layerName];
+  const zoom = rasterZoom(bounds, imagery === "satellite" ? SATELLITE_ZOOM : NATIVE_ZOOM[layerName]);
   const tileCountAtZoom = 2 ** zoom;
   const westTile = ((bounds.west + 180) / 360) * tileCountAtZoom;
   const eastTile = ((bounds.east + 180) / 360) * tileCountAtZoom;
@@ -675,13 +633,9 @@ async function renderSheetCanvas(feature, layerName, tileSource, signal, imagery
     imageWidth,
     imageHeight,
     bounds,
-    missingTiles
+    missingTiles,
+    zoom
   };
-}
-
-function mercatorY(latitude) {
-  const latitudeRadians = (latitude * Math.PI) / 180;
-  return EARTH_RADIUS_METERS * Math.log(Math.tan(Math.PI / 4 + latitudeRadians / 2));
 }
 
 function pdfEscape(value) {
@@ -708,7 +662,9 @@ function makePdfContent({
   scale,
   sheetIndexFeatures,
   selectedFeature,
-  layerName
+  layerName,
+  compact,
+  paperSize
 }) {
   const commands = [];
   const text = (value, x, y, size, font = "F1", color = "0 0 0") => {
@@ -734,6 +690,52 @@ function makePdfContent({
     }
     commands.push(`${stroke} RG ${mmToPt(strokeWidth).toFixed(2)} w ${path} S`);
   };
+
+  if (compact) {
+    const margin = 10;
+    text("TOPOSEARCH | FREE FRAME", margin, 10, 7, "F2");
+    text(`${paperSize} | 1:50 000 | Print at 100% / actual size`, margin, 17, 7, "F2");
+    text(lines.satellite ? "NGI aerial imagery" : lines.sourceLabel, margin, 23, 6);
+    const barX = pageWidth - 57;
+    rectangle(barX, 7, 20, 1.8, "0 0 0", "0 0 0", 0.2);
+    rectangle(barX + 20, 7, 20, 1.8, "0 0 0", "1 1 1", 0.2);
+    text("0", barX, 14, 5);
+    centeredText("1", barX + 20, 14, 5);
+    text("2 km", barX + 40, 14, 5);
+    commands.push("q 0.25 w 0 0 0 RG");
+    commands.push(
+      `${mmToPt(mapWidth).toFixed(2)} 0 0 ${mmToPt(mapHeight).toFixed(2)} ${mmToPt(mapX).toFixed(2)} ${mmToPt(pageHeight - mapY - mapHeight).toFixed(2)} cm /Im0 Do Q`
+    );
+    rectangle(mapX, mapY, mapWidth, mapHeight, "0 0 0", null, 0.35);
+    const footer = mapY + mapHeight + 5;
+    text(`True north up | Magnetic declination ${lines.declinationLabel} (${lines.declinationModel})`, margin, footer, 5.5);
+    if (lines.satellite) {
+      text(lines.missingTiles ? "Grey areas: no aerial imagery available." : "Aerial imagery dates vary by location.", margin, footer + 6, 5.5);
+      text("Imagery is for reference; verify routes and local conditions.", margin, footer + 12, 5.5);
+    } else {
+      const entries = [
+        ["Road", "0.72 0.12 0.08", "[] 0 d"],
+        ["Track", "0.42 0.38 0.32", "[1 1] 0 d"],
+        ["Water", "0.12 0.42 0.72", "[] 0 d"],
+        ["Boundary", "0 0 0", "[2 2] 0 d"],
+        ["Railway", "0.1 0.1 0.1", "[] 0 d"],
+        ["Vegetation", "0.18 0.55 0.24", "[1 1] 0 d"]
+      ];
+      const columnWidth = (pageWidth - 2 * margin) / 3;
+      entries.forEach(([label, color, dash], index) => {
+        const x = margin + (index % 3) * columnWidth;
+        const y = footer + 6 + Math.floor(index / 3) * 5;
+        line(x, y - 1, x + 7, y - 1, 0.5, color, dash);
+        text(label, x + 9, y, 5.5);
+      });
+    }
+    text(lines.extent, margin, footer + 19, 5);
+    text(`${lines.source} | Raster zoom ${lines.sourceZoom}`, margin, footer + 25, 5);
+    text(lines.attribution, margin, footer + 31, 5);
+    text(lines.generated, margin, footer + 37, 5);
+    text(lines.satellite ? "Check image dates and local conditions before navigation." : "Symbols are generalized; check source symbology and local conditions.", margin, footer + 43, 5);
+    return commands.join("\n");
+  }
 
   const margin = 14;
   text(lines.scaleHeader, margin, 19, 10, "F2");
@@ -767,10 +769,10 @@ function makePdfContent({
     return values;
   };
   const axisLabel = (value, positive, negative) => {
-    const absolute = Math.abs(value);
-    const degrees = Math.floor(absolute + 1e-8);
-    const minutes = Math.round((absolute - degrees) * 60);
-    return `${degrees} ${String(minutes).padStart(2, "0")} ${value >= 0 ? positive : negative}`;
+    const seconds = Math.round(Math.abs(value) * 3600);
+    const degrees = Math.floor(seconds / 3600);
+    const minutes = Math.floor(seconds % 3600 / 60);
+    return `${degrees} ${String(minutes).padStart(2, "0")} ${String(seconds % 60).padStart(2, "0")} ${value >= 0 ? positive : negative}`;
   };
   const longitudeInterval = (lines.bounds.east - lines.bounds.west) > 1 ? 0.5 : 5 / 60;
   const latitudeInterval = (lines.bounds.north - lines.bounds.south) > 1 ? 0.25 : 5 / 60;
@@ -1087,7 +1089,7 @@ function makePdfContent({
   const detailLines = [
     lines.subtitle,
     lines.extent,
-    `${lines.source} | ${lines.satellite ? "Raster" : "Native raster"} zoom ${lines.sourceZoom}`,
+    `${lines.source} | Raster zoom ${lines.sourceZoom}`,
     "Coordinate frame: WGS84 latitude / longitude | Image projection: Web Mercator",
     `Magnetic declination: ${lines.declinationLabel} (${lines.declinationModel})`,
     lines.attribution,
@@ -1173,12 +1175,12 @@ function coverageLabel(bounds) {
   return `Sheets: ${shown}${codes.length > 8 ? ` +${codes.length - 8} more` : ""}`;
 }
 
-function buildPrintLines(feature, layerName, tileSource, bounds, generatedAt, imagery, missingTiles) {
+function buildPrintLines(feature, layerName, tileSource, bounds, generatedAt, imagery, missingTiles, sourceZoom) {
   const { s: sheet, e: edition, y: year, custom } = feature.properties;
-  const scale = MAP_SCALE[layerName];
-  const scaleLabel = layerName === "50k" ? "50 000" : "250 000";
-  const centerLatitude = (bounds.north + bounds.south) / 2;
-  const centerLongitude = (bounds.west + bounds.east) / 2;
+  const scale = PRINT_SCALE;
+  const scaleLabel = "50 000";
+  const centerLatitude = feature.properties.centerLat;
+  const centerLongitude = feature.properties.centerLng;
   if (
     generatedAt.getUTCFullYear() < MODEL_EPOCH ||
     generatedAt.getUTCFullYear() >= MODEL_VALID_UNTIL
@@ -1195,7 +1197,7 @@ function buildPrintLines(feature, layerName, tileSource, bounds, generatedAt, im
   return {
     centerLatitude,
     scale,
-    sourceZoom: satellite ? SATELLITE_ZOOM[layerName] : NATIVE_ZOOM[layerName],
+    sourceZoom,
     satellite,
     missingTiles,
     custom,
@@ -1205,8 +1207,9 @@ function buildPrintLines(feature, layerName, tileSource, bounds, generatedAt, im
     subtitle: satellite
       ? `NGI aerial imagery | ${custom ? "Custom frame" : `Sheet ${sheet}`}`
       : custom
-      ? `NGI 1:${scaleLabel} topographic map | Custom frame | ${coverageLabel(bounds)}`
-      : `NGI 1:${scaleLabel} topographic map | Edition ${edition} (${year})`,
+      ? `NGI 1:${layerName === "50k" ? "50 000" : "250 000"} source${layerName === "250k" ? " (enlarged)" : ""} | ${coverageLabel(bounds)}`
+      : `NGI source map | Edition ${edition} (${year})`,
+    sourceLabel: `NGI 1:${layerName === "50k" ? "50 000" : "250 000"} topographic source${layerName === "250k" ? " (enlarged)" : ""}`,
     extent:
       `Extent: ${formatCoordinate(bounds.west, "E", "W")} to ${formatCoordinate(bounds.east, "E", "W")}, ` +
       `${formatCoordinate(bounds.south, "N", "S")} to ${formatCoordinate(bounds.north, "N", "S")}`,
@@ -1226,11 +1229,11 @@ function buildPrintLines(feature, layerName, tileSource, bounds, generatedAt, im
   };
 }
 
-async function createPrintPdf(feature, layerName, tileSource, signal, imagery) {
+async function createPrintPdf(feature, layerName, tileSource, signal, imagery, paperSize) {
   if (!feature) {
     throw new Error("Select a map sheet before printing.");
   }
-  const { jpeg, imageWidth, imageHeight, bounds, missingTiles } = await renderSheetCanvas(
+  const { jpeg, imageWidth, imageHeight, bounds, missingTiles, zoom } = await renderSheetCanvas(
     feature,
     layerName,
     tileSource,
@@ -1238,22 +1241,8 @@ async function createPrintPdf(feature, layerName, tileSource, signal, imagery) {
     imagery
   );
   const generatedAt = new Date();
-  const lines = buildPrintLines(feature, layerName, tileSource, bounds, generatedAt, imagery, missingTiles);
-  const centerLatitude = lines.centerLatitude;
-  const cosLatitude = Math.cos((centerLatitude * Math.PI) / 180);
-  const westMercator = EARTH_RADIUS_METERS * ((bounds.west * Math.PI) / 180);
-  const eastMercator = EARTH_RADIUS_METERS * ((bounds.east * Math.PI) / 180);
-  const northMercator = mercatorY(bounds.north);
-  const southMercator = mercatorY(bounds.south);
-  const mapWidth = ((eastMercator - westMercator) * cosLatitude * 1000) / lines.scale;
-  const mapHeight = ((northMercator - southMercator) * cosLatitude * 1000) / lines.scale;
-  const pageWidth = layerName === "50k" ? 594 : 1189;
-  const pageHeight = 841;
-  const mapX = (pageWidth - mapWidth) / 2;
-  const mapY = 62;
-  if (mapX < 16 || mapY < 16) {
-    throw new Error(`Sheet ${feature.properties.s} does not fit the selected print scale and page.`);
-  }
+  const lines = buildPrintLines(feature, layerName, tileSource, bounds, generatedAt, imagery, missingTiles, zoom);
+  const { pageWidth, pageHeight, mapX, mapY, mapWidth, mapHeight, compact } = paperLayout(paperSize);
   const content = makePdfContent({
     pageWidth,
     pageHeight,
@@ -1265,7 +1254,9 @@ async function createPrintPdf(feature, layerName, tileSource, signal, imagery) {
     scale: lines.scale,
     sheetIndexFeatures: sheetCollections["50k"]?.features || [],
     selectedFeature: feature,
-    layerName
+    layerName,
+    compact,
+    paperSize
   });
   return { pdf: assemblePdf(jpeg, imageWidth, imageHeight, pageWidth, pageHeight, content), missingTiles };
 }
@@ -1296,16 +1287,17 @@ printChoice.querySelector("form").addEventListener("submit", async (event) => {
     : feature.properties.s;
   const fileLayer = layerSelect.value;
   const tileSource = sourceSelect.value;
+  const paperSize = paperSelect.value;
   try {
     printToken = await startGeneration();
-    const { pdf, missingTiles } = await createPrintPdf(feature, fileLayer, tileSource, printController.signal, imagery);
+    const { pdf, missingTiles } = await createPrintPdf(feature, fileLayer, tileSource, printController.signal, imagery, paperSize);
     if (printController.signal.aborted) {
       return;
     }
     const url = URL.createObjectURL(pdf);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = `TopoSearch_${fileSheet}_${fileLayer}${imagery === "satellite" ? "_Aerial" : ""}_${new Date().toISOString().slice(0, 10)}.pdf`;
+    anchor.download = `TopoSearch_${fileSheet}_${paperSize}_1-50000_${fileLayer}${imagery === "satellite" ? "_Aerial" : ""}_${new Date().toISOString().slice(0, 10)}.pdf`;
     anchor.click();
     setTimeout(() => URL.revokeObjectURL(url), 60000);
     const missingNote = missingTiles ? ` ${missingTiles} tiles have no aerial imagery and are shown in grey.` : "";

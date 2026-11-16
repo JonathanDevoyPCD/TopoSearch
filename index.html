@@ -58,8 +58,7 @@
           <div>
             <h1 class="max-w-md text-4xl font-semibold leading-tight">Print-ready topographic maps of South Africa.</h1>
             <p class="mt-4 max-w-md text-emerald-100">
-              Choose a 1:50&nbsp;000 or 1:250&nbsp;000 sheet, or frame your own area, and download a full-resolution
-              PDF with legend, grid and magnetic declination.
+              Frame your own area and download a print-ready 1:50&nbsp;000 PDF with map details and magnetic declination.
             </p>
           </div>
           <p class="text-xs text-emerald-200">Map data: State Copyright, Chief Directorate: National Geo-spatial Information (NGI).</p>
@@ -163,8 +162,8 @@
             <button class="group flex items-center gap-2 rounded-lg bg-stone-100 px-3 py-1.5 text-left ring-1 ring-inset ring-stone-200 transition hover:bg-stone-200/70" type="button" id="focus-sheet" title="Zoom to the selected map">
               <svg class="h-4 w-4 flex-none text-emerald-700" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z"></path><circle cx="12" cy="10" r="2.5"></circle></svg>
               <span class="leading-tight">
-                <strong id="selected-sheet" class="block text-sm font-semibold">3325CC</strong>
-                <span id="selected-sheet-name" class="block text-xs text-stone-500">Loerie</span>
+                <strong id="selected-sheet" class="block text-sm font-semibold">No frame</strong>
+                <span id="selected-sheet-name" class="block text-xs text-stone-500">Click the map</span>
               </span>
             </button>
 
@@ -227,9 +226,19 @@
                 <option value="offline">Local offline tiles</option>
               </select>
             </div>
+            <div class="w-full sm:w-36">
+              <label class="label" for="paper-size">Paper size</label>
+              <select id="paper-size" class="field">
+                <option value="A0">A0 portrait</option>
+                <option value="A1" selected>A1 portrait</option>
+                <option value="A2">A2 portrait</option>
+                <option value="A3">A3 portrait</option>
+                <option value="A4">A4 portrait</option>
+              </select>
+            </div>
             <label class="flex items-center gap-2 pb-2.5 text-sm text-stone-700">
-              <input id="sheet-index" type="checkbox" checked class="h-4 w-4 rounded border-stone-300 text-emerald-700 focus:ring-emerald-600">
-              Outline selected sheet
+              <input id="sheet-index" type="checkbox" class="h-4 w-4 rounded border-stone-300 text-emerald-700 focus:ring-emerald-600">
+              Outline centre sheet
             </label>
             <div class="w-full sm:w-56">
               <label class="label" for="map-blend">Map blend</label>
@@ -251,40 +260,24 @@
               <button class="btn-secondary" id="cancel-print" type="button" hidden>Cancel</button>
               <a class="btn-accent" id="race-map" href="#" hidden>
                 <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"></path></svg>
-                <span>Download race map (TIF) <small id="race-map-size" class="font-normal opacity-90"></small></span>
+                <span><span id="race-map-label">Original race map (TIF)</span> <small id="race-map-size" class="font-normal opacity-90"></small></span>
               </a>
               <a class="link text-sm" id="race-map-world" href="#" hidden>World file (.tfw)</a>
+              <button class="btn-secondary" id="clear-frame" type="button">Clear frame</button>
             </div>
           </div>
+          <p class="mt-3 text-xs text-stone-500">PDFs are 1:50 000 at the frame centre when printed at actual size; scale varies slightly across the map. The inner outline is the printed map and the shaded border holds page details. Original race-map TIF files have separate print settings.</p>
           <p id="map-status" class="mt-3 text-sm text-stone-600 data-[state=error]:text-red-700" role="status" aria-live="polite">Loading map sheets…</p>
         </section>
 
         <div class="map-shell overflow-hidden rounded-xl shadow-sm ring-1 ring-stone-300">
           <div id="map" aria-label="Interactive topographic map"></div>
-          <aside class="tool-drawer" id="tool-drawer" data-open="true" aria-label="Map tools">
-            <button class="drawer-toggle" id="drawer-toggle" type="button" aria-expanded="true" aria-controls="tool-list">
-              <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"></path></svg>
-              <span>Tools</span>
-            </button>
-            <div class="tool-list" id="tool-list" role="radiogroup" aria-label="Tool">
-              <button class="tool-button active" type="button" role="radio" aria-checked="true" data-tool="select">
-                <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 3l14 8-6 2-2 6z"></path></svg>
-                <span>Select</span>
-              </button>
-              <button class="tool-button" type="button" role="radio" aria-checked="false" data-tool="frame">
-                <svg aria-hidden="true" viewBox="0 0 24 24"><rect x="6" y="3" width="12" height="18" stroke-dasharray="3 2"></rect></svg>
-                <span>Free Frame</span>
-              </button>
-              <p class="tool-hint" id="tool-hint">Click a sheet to select it for download.</p>
-              <button class="tool-clear" id="clear-frame" type="button" hidden>Clear frame</button>
-            </div>
-          </aside>
         </div>
 
         <dialog id="print-choice" aria-labelledby="print-choice-title" class="w-[min(90vw,28rem)] rounded-xl bg-white p-6 text-stone-900 shadow-xl">
           <h2 id="print-choice-title" class="text-lg font-semibold">Choose a PDF map</h2>
           <p class="mt-2 text-sm text-stone-600">Choose the imagery to print. The map blend slider only changes the on-screen view.</p>
-          <p class="mt-2 text-sm text-stone-600">Aerial imagery dates vary. PDF exports use reduced detail compared with the closest map zoom; the 250k PDF is coarser. Downloads are free.</p>
+          <p class="mt-2 text-sm text-stone-600">PDFs print at 1:50 000 on the selected paper at actual size. A 1:250 000 topographic source is enlarged and retains its original coarser detail. Aerial imagery dates and detail vary. Downloads are free.</p>
           <p class="mt-2 text-sm text-stone-600">Each PDF uses one map generation, even if canceled or unsuccessful.</p>
           <form method="dialog" class="mt-5 flex flex-wrap gap-2">
             <button class="btn-primary" value="topographic">Topographic PDF</button>

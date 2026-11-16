@@ -1,8 +1,8 @@
 # TopoSearch
 
-A lightweight map viewer focused on topographic sheet **3325CC (Loerie)** and
-the surrounding area. Select a sheet boundary to change the selection, then use
-**Download print PDF** to make a full-sheet, scale-labeled PDF.
+A lightweight South African topographic map viewer initially centred on
+**3325CC (Loerie)**. Place a free frame, choose a paper size, and use
+**Download print PDF** to create a map at 1:50,000.
 
 ## Run locally
 
@@ -81,21 +81,26 @@ has confirmed permission for display and PDF downloads; downloads must be free.
 Do not assume that this permission applies to other projects or operators.
 
 The PDF button asks whether to export topographic or aerial imagery; the
-on-screen blend does not change the PDF. Aerial exports use tiles at zoom 15 for
-1:50,000 and zoom 13 for 1:250,000 to limit requests and browser memory. These
-PDFs have less detail than the highest on-screen zoom or the underlying imagery,
-and 1:250,000 exports are coarser. Aerial PDFs carry the imagery attribution
+on-screen blend does not change the PDF. Aerial exports use zoom 15 or lower,
+depending on the selected area, to limit requests and browser memory. These
+PDFs have less detail than the highest on-screen zoom or the underlying imagery.
+Aerial PDFs carry the imagery attribution
 and do not claim that topographic symbols appear on the image. Areas where the
 aerial service returns no imagery are shown in grey and identified in the PDF;
 an export fails if the entire selected area has no imagery.
 Each PDF generation uses the existing monthly quota, even if canceled or failed.
 
-The tool drawer (top right of the map) has two tools:
+**Free Frame** is the map selection tool. Select A0, A1, A2, A3, or A4 portrait
+paper, then click or drag the frame to position it. The outer dashed outline
+shows the full paper footprint; its shaded border is reserved for page details.
+The inner outline marked **PRINTED MAP** shows exactly the imagery included in
+the PDF. Changing the paper size changes the area covered, not the print scale.
+The frame stays within the dashed downloadable area.
 
-- **Select** – click a sheet to select it for download.
-- **Free Frame** – click to place a fixed-size, sheet-sized frame (1:50,000: 0.25° × 0.25°; 1:250,000: 2° × 1°),
-  then drag it (or its ✥ handle) into position. The PDF covers exactly the frame and lists the source sheets it
-  overlaps. On GitHub Pages the frame is limited to the dashed downloadable area.
+The centre of the printed map identifies the 1:50,000 sheet for original race
+map (TIF) and world-file downloads, when available. Those original files are
+separate from generated PDFs: paper size and print scale are not controlled by
+TopoSearch for TIF files.
 
 ## Map coverage and sources
 
@@ -105,7 +110,7 @@ The tool drawer (top right of the map) has two tools:
   [`sheet50k.json`](https://htonl.dev.openstreetmap.org/ngi-tiles/sheet50k.json)
   and [`sheet250k.json`](https://htonl.dev.openstreetmap.org/ngi-tiles/sheet250k.json).
   They record map-sheet identifiers, editions, publication years, and bounds. Sheets are not drawn as a grid;
-  clicking the map selects the sheet under the cursor and outlines only that one. Outside
+  optionally outline the 1:50,000 sheet under the frame centre. Outside
   South Africa, a 50%-opacity OpenStreetMap base layer is shown under the NGI tiles.
 - The htonl viewer identifies its topographic imagery as **State Copyright**,
   Chief Directorate: National Geo-spatial Information (NGI). Tiles are therefore
@@ -115,17 +120,20 @@ The tool drawer (top right of the map) has two tools:
 
   The 3325CC sheet index identifies edition 5 (2015), covering 25.0°–25.25° E
   and 33.75°–34.0° S. The overlapping 1:250,000 source sheet is 3324, edition 5
-  (2007). Print PDFs are assembled in the browser from the selected
-  sheet's tiles at the source's native zoom (15 for 1:50,000; 12 for 1:250,000).
-  The 1:50,000 map is laid out on A1 portrait; 1:250,000 uses A0 landscape. The
-  printed map area is sized to the selected sheet bounds at the nominal scale,
-  with the scale corrected for Web Mercator at the sheet's center latitude.
-  Print at 100% / actual size; do not use "fit to page" if the printed scale
-  matters. PDF borders include coordinate ticks, a bilingual reference key,
-  true/magnetic north references, a scale bar, a neighboring-sheet index, and
-  the selected sheet code, edition/year, geographic extent, tile source,
-  generation time, and NGI attribution. Magnetic declination is calculated at
-  the selected sheet's center for the PDF generation date using the WMM2025
+  (2007). PDFs are assembled in the browser from tiles covering the selected
+  frame. All generated PDFs use a nominal 1:50,000 scale at the frame centre,
+  calculated using WGS84 local east-west and north-south scales. Web Mercator
+  scale varies slightly away from the centre, particularly on larger pages.
+  Print on the selected paper at 100% / actual size; "fit to page", printer
+  scaling, or a smaller paper size changes the scale. Source tiles use zoom 15
+  or less for 1:50,000 and zoom 12 or less for 1:250,000; large frames may use a
+  lower zoom to keep browser memory bounded. Printing the 1:250,000 layer enlarges
+  its source data to 1:50,000 and does not add detail.
+
+  A0 and A1 PDFs include the full generalized bilingual reference key, coordinate
+  ticks, north references and sheet index. A2, A3 and A4 use a compact generalized
+  legend and scale bar. All show the extent, source, generation time and NGI
+  attribution. Magnetic declination is calculated at the frame centre for the PDF generation date using the WMM2025
   model; the calculation is local and does not require an API. WMM2025 is valid
   through 2029, so the model must be updated before generating PDFs in 2030.
   The reference key uses generalized symbols based on the supplied example;
@@ -137,7 +145,7 @@ The tool drawer (top right of the map) has two tools:
 
   Online tile export is relayed through the included local server because the
   tile host does not enable cross-origin canvas export. Only tiles required for
-  the user-selected sheet are requested, after the user clicks the print button.
+  the user-selected frame are requested, after the user clicks the print button.
   The server accepts only the fixed NGI tile host, supported layer names, and
   native zoom ranges. Map age, completeness, scale, and fitness for navigation
   must still be checked against official sources before training.
