@@ -68,9 +68,32 @@ To run the UI against a local Worker: put `SESSION_SECRET` and
 `--local`, run `npx wrangler dev --port 8787`, and open the site with
 `?api=http://127.0.0.1:8787`. Without `?api=` the local site skips sign-in.
 
+For an existing deployment, apply the updated schema before deploying the Worker:
+`npx wrangler d1 execute toposearch --remote --file worker/schema.sql`, then
+`npm run worker:deploy`. The schema uses `CREATE TABLE IF NOT EXISTS` and does
+not replace existing account data.
+
 The interface is styled with Tailwind CSS loaded from its CDN (`index.html`).
 
 ## Tools
+
+**WayFinder** opens from the map's top-right corner. Choose CP, TA, Start,
+Finish or Label, click the map and name the marking. CP and TA names are
+suggested in sequence. Choose Highlighter and drag to draw; yellow, orange,
+cyan and green are available. Zoom in before drawing a narrower stroke. Use the
+markings list to move, rename or delete items, then choose **Frame / pan** to
+adjust the print frame or pan the map. Names support printable Latin-1 text.
+
+Signed-in users' markings save to their account and load on other devices.
+Saving is not live-synchronized: if another device changes the markings,
+WayFinder warns about the conflict rather than silently overwriting them.
+Unsaved work can be kept on screen, or explicitly used to replace the saved
+version. The local no-sign-in preview keeps markings only until the page closes
+or refreshes. The limit is 500 markings and 10,000 highlight points.
+
+Topographic and aerial PDFs include WayFinder points whose centres are within
+the **PRINTED MAP** outline, and clip highlight strokes at that outline.
+Markings are not added to original race-map TIF files.
 
 **Map blend** fades between NGI topographic maps and the
 [NGI aerial imagery viewer](https://aerial.openstreetmap.org.za/). NGI describes

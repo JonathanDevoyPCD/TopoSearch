@@ -139,3 +139,61 @@ test("auth routes validate input before touching the database", async () => {
   assert.equal((await post("/auth/signup", { name: "A", email: "a@b.co", password: "short" })).status, 400);
   assert.equal((await post("/pdf/start", {})).status, 401);
 });
+
+test("WayFinder saves per account and rejects stale or invalid updates", async (t) => {
+  let DatabaseSync;
+  try {
+    ({ DatabaseSync } = await import("node:sqlite"));
+  } catch (error) {
+    if (error.code !== "ERR_UNKNOWN_BUILTIN_MODULE" && error.code !== "ERR_MODULE_NOT_FOUND") {
+      throw error;
+    }
+    t.skip("Node SQLite is unavailable");
+    return;
+  }
+  const { readFileSync } = await import("node:fs");
+  const db = new DatabaseSync(":memory:");
+  t.after(() => db.close());
+  db.exec(readFileSync(new URL("./schema.sql", import.meta.url), "utf8"));
+  db.exec(`INSERT INTO users (id, email, name, password_hash, created_at)
+    VALUES (1, 'one@example.test', 'One', 'x', 'now'), (2, 'two@example.test', 'Two', 'x', 'now')`);
+  const binding = {
+    prepare(sql) {
+      return {
+        bind(...values) {
+          const args = Object.fromEntries(values.map((value, index) => [`?${index + 1}`, value]));
+          return {
+            async first() { return db.prepare(sql).get(args); },
+            async run() {
+              const result = db.prepare(sql).run(args);
+              return { meta: { changes: Number(result.changes) } };
+            }
+          };
+        }
+      };
+    }
+  };
+  const tokens = [
+    await signToken({ t: "s", uid: 1, v: 1 }, env.SESSION_SECRET, 60),
+    await signToken({ t: "s", uid: 2, v: 1 }, env.SESSION_SECRET, 60)
+  ];
+  const call = (user, method = "GET", body) => worker.fetch(
+    new Request("https://example.test/wayfinder", {
+      method,
+      headers: { Origin: origin, Authorization: `Bearer ${tokens[user]}`, "Content-Type": "application/json" },
+      body: body === undefined ? undefined : JSON.stringify(body)
+    }), { ...env, DB: binding }
+  );
+  const point = { id: "a", type: "cp", name: "CP1", lat: -34, lng: 25 };
+  assert.deepEqual(await (await call(0)).json(), { revision: 0, markings: [] });
+  assert.equal((await call(0, "POST", { revision: 0, markings: [point] })).status, 200);
+  assert.deepEqual(await (await call(1)).json(), { revision: 0, markings: [] });
+  assert.equal((await call(0, "POST", { revision: 0, markings: [] })).status, 409);
+  assert.equal((await call(0, "POST", { revision: 1, markings: [{ ...point, lat: 95 }] })).status, 400);
+  assert.equal((await call(0, "POST", { revision: 1, markings: [] })).status, 200);
+  assert.deepEqual(await (await call(0)).json(), { revision: 2, markings: [] });
+  const anonymous = await worker.fetch(new Request("https://example.test/wayfinder", {
+    headers: { Origin: origin }
+  }), { ...env, DB: binding });
+  assert.equal(anonymous.status, 401);
+});

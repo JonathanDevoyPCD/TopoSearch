@@ -174,7 +174,7 @@ async function readJson(request) {
   }
 }
 
-async function sessionFor(request, env) {
+export async function sessionFor(request, env) {
   const header = request.headers.get("Authorization") || "";
   const payload = await verifyToken(header.replace(/^Bearer\s+/i, ""), env.SESSION_SECRET, "s");
   if (!payload) {

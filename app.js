@@ -2,6 +2,8 @@ import { magvar, MODEL_EPOCH, MODEL_VALID_UNTIL } from "./vendor/magvar/magvar.j
 import { onQuotaChange, quotaRemaining, startGeneration } from "./auth.js";
 import { decodeTileResponse } from "./tile-image.js";
 import { PRINT_SCALE, paperLayout, frameGeometry, clampFrameCenter, mercatorY, rasterZoom } from "./print-layout.js";
+import { createWayfinder } from "./wayfinder.js";
+import { pdfEscape, wayfinderPdfCommands } from "./wayfinder-print.js";
 
 const NGI_ROOT = "https://htonl.dev.openstreetmap.org/ngi-tiles";
 const SATELLITE_ROOT = "https://aerial.openstreetmap.org.za/layer/ngi-aerial";
@@ -51,6 +53,7 @@ const map = L.map("map", {
   maxZoom: 20,
   zoomControl: true
 });
+const wayfinder = createWayfinder(map);
 
 const attribution =
   'State Copyright &copy; Chief Directorate: National Geo-spatial Information (NGI)';
@@ -638,15 +641,6 @@ async function renderSheetCanvas(feature, layerName, tileSource, signal, imagery
   };
 }
 
-function pdfEscape(value) {
-  return value
-    .replace(/[^\x20-\x7e\u00a9]/g, "?")
-    .replace(/\\/g, "\\\\")
-    .replace(/\(/g, "\\(")
-    .replace(/\)/g, "\\)")
-    .replace(/\u00a9/g, "\\251");
-}
-
 function mmToPt(value) {
   return (value * 72) / 25.4;
 }
@@ -664,7 +658,8 @@ function makePdfContent({
   selectedFeature,
   layerName,
   compact,
-  paperSize
+  paperSize,
+  markings
 }) {
   const commands = [];
   const text = (value, x, y, size, font = "F1", color = "0 0 0") => {
@@ -706,6 +701,7 @@ function makePdfContent({
     commands.push(
       `${mmToPt(mapWidth).toFixed(2)} 0 0 ${mmToPt(mapHeight).toFixed(2)} ${mmToPt(mapX).toFixed(2)} ${mmToPt(pageHeight - mapY - mapHeight).toFixed(2)} cm /Im0 Do Q`
     );
+    commands.push(wayfinderPdfCommands(markings, lines.bounds, { pageHeight, mapX, mapY, mapWidth, mapHeight }));
     rectangle(mapX, mapY, mapWidth, mapHeight, "0 0 0", null, 0.35);
     const footer = mapY + mapHeight + 5;
     text(`True north up | Magnetic declination ${lines.declinationLabel} (${lines.declinationModel})`, margin, footer, 5.5);
@@ -750,6 +746,7 @@ function makePdfContent({
   commands.push(
     `${mmToPt(mapWidth).toFixed(2)} 0 0 ${mmToPt(mapHeight).toFixed(2)} ${mmToPt(mapX).toFixed(2)} ${mmToPt(pageHeight - mapY - mapHeight).toFixed(2)} cm /Im0 Do Q`
   );
+  commands.push(wayfinderPdfCommands(markings, lines.bounds, { pageHeight, mapX, mapY, mapWidth, mapHeight }));
   rectangle(mapX, mapY, mapWidth, mapHeight, "0 0 0", null, 0.4);
 
   const coordinateTicks = (min, max, interval) => {
@@ -1110,11 +1107,11 @@ function assemblePdf(jpegBytes, imageWidth, imageHeight, pageWidth, pageHeight, 
     encoder.encode("<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
     encoder.encode(
       `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${mmToPt(pageWidth).toFixed(2)} ${mmToPt(pageHeight).toFixed(2)}] ` +
-      "/Resources << /XObject << /Im0 4 0 R >> /Font << /F1 5 0 R /F2 6 0 R >> >> /Contents 7 0 R >>"
+      "/Resources << /XObject << /Im0 4 0 R >> /Font << /F1 5 0 R /F2 6 0 R >> /ExtGState << /WF << /Type /ExtGState /ca 0.45 /CA 0.45 >> >> >> /Contents 7 0 R >>"
     ),
     null,
     encoder.encode("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>"),
-    encoder.encode("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>"),
+    encoder.encode("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>"),
     encoder.encode(`<< /Length ${encoder.encode(content).length} >>\nstream\n${content}\nendstream`)
   ];
   const imageHeader = encoder.encode(
@@ -1229,7 +1226,7 @@ function buildPrintLines(feature, layerName, tileSource, bounds, generatedAt, im
   };
 }
 
-async function createPrintPdf(feature, layerName, tileSource, signal, imagery, paperSize) {
+async function createPrintPdf(feature, layerName, tileSource, signal, imagery, paperSize, markings) {
   if (!feature) {
     throw new Error("Select a map sheet before printing.");
   }
@@ -1256,7 +1253,8 @@ async function createPrintPdf(feature, layerName, tileSource, signal, imagery, p
     selectedFeature: feature,
     layerName,
     compact,
-    paperSize
+    paperSize,
+    markings
   });
   return { pdf: assemblePdf(jpeg, imageWidth, imageHeight, pageWidth, pageHeight, content), missingTiles };
 }
@@ -1288,9 +1286,10 @@ printChoice.querySelector("form").addEventListener("submit", async (event) => {
   const fileLayer = layerSelect.value;
   const tileSource = sourceSelect.value;
   const paperSize = paperSelect.value;
+  const markings = wayfinder.snapshot();
   try {
     printToken = await startGeneration();
-    const { pdf, missingTiles } = await createPrintPdf(feature, fileLayer, tileSource, printController.signal, imagery, paperSize);
+    const { pdf, missingTiles } = await createPrintPdf(feature, fileLayer, tileSource, printController.signal, imagery, paperSize, markings);
     if (printController.signal.aborted) {
       return;
     }

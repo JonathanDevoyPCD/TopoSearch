@@ -1,5 +1,6 @@
 const NGI_TILE_ORIGIN = "https://htonl.dev.openstreetmap.org";
-import { HttpError, handleAuth, isAuthRoute, requirePrintToken } from "./auth.js";
+import { HttpError, handleAuth, isAuthRoute, requirePrintToken, sessionFor } from "./auth.js";
+import { validateWayfinderMarkings } from "../wayfinder-data.js";
 const TILE_PATH = /^\/(50k|250k)\/(\d+)\/(\d+)\/(\d+)\.png$/;
 const MAX_ZOOM = { "50k": 15, "250k": 12 };
 const ALLOWED_AREA = {
@@ -94,6 +95,50 @@ export default {
     }
 
     const url = new URL(request.url);
+    if (url.pathname === "/wayfinder" && (request.method === "GET" || request.method === "POST")) {
+      try {
+        if (!env.DB) {
+          throw new HttpError(500, "Server database is not configured.");
+        }
+        const user = await sessionFor(request, env);
+        if (request.method === "GET") {
+          const row = await env.DB.prepare("SELECT revision, markings FROM wayfinder WHERE user_id = ?1")
+            .bind(user.id).first();
+          return jsonOk(row ? { revision: row.revision, markings: JSON.parse(row.markings) } : { revision: 0, markings: [] }, origin);
+        }
+        const text = await request.text();
+        if (new TextEncoder().encode(text).length > 1000000) {
+          throw new HttpError(413, "WayFinder data is too large to save.");
+        }
+        let body;
+        try {
+          body = JSON.parse(text);
+        } catch {
+          throw new HttpError(400, "Invalid WayFinder data.");
+        }
+        if (!body || !Number.isSafeInteger(body.revision) || body.revision < 0 ||
+            !validateWayfinderMarkings(body.markings)) {
+          throw new HttpError(400, "Invalid WayFinder data.");
+        }
+        const result = await env.DB.prepare(
+          `INSERT INTO wayfinder (user_id, revision, markings)
+           SELECT ?1, 1, ?2
+           WHERE ?3 = 0 OR EXISTS (SELECT 1 FROM wayfinder WHERE user_id = ?1)
+           ON CONFLICT(user_id) DO UPDATE SET revision = revision + 1, markings = excluded.markings
+           WHERE wayfinder.revision = ?3`
+        ).bind(user.id, JSON.stringify(body.markings), body.revision).run();
+        if (!result.meta.changes) {
+          throw new HttpError(409, "WayFinder changed on another device. Reload before saving again.");
+        }
+        return jsonOk({ revision: body.revision + 1 }, origin);
+      } catch (error) {
+        if (error instanceof HttpError) {
+          return jsonError(error.message, error.status, origin);
+        }
+        console.error("WayFinder route failed:", error);
+        return jsonError("Could not access saved WayFinder markings.", 500, origin);
+      }
+    }
     if (isAuthRoute(request, url.pathname)) {
       if (await limited(env.AUTH_LIMITER, request)) {
         return jsonError("Too many attempts. Please wait a minute and try again.", 429, origin);

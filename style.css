@@ -4,7 +4,8 @@
   display: none !important;
 }
 
-#print-choice::backdrop {
+#print-choice::backdrop,
+#wayfinder-name-dialog::backdrop {
   background: rgba(28, 25, 23, 0.55);
 }
 
@@ -79,4 +80,157 @@
   font-size: 18px;
   line-height: 1;
   cursor: move;
+}
+
+.wayfinder {
+  position: absolute;
+  z-index: 800;
+  top: 12px;
+  right: 12px;
+  width: min(320px, calc(100% - 24px));
+  color: #292524;
+}
+
+.wayfinder-toggle,
+.wayfinder-panel {
+  background: white;
+  border: 1px solid #d6d3d1;
+  border-radius: 12px;
+  box-shadow: 0 4px 18px rgba(28, 25, 23, 0.18);
+}
+
+.wayfinder-toggle {
+  display: block;
+  margin-left: auto;
+  padding: 9px 14px;
+  color: #047857;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.wayfinder-panel {
+  margin-top: 6px;
+  padding: 14px;
+  max-height: min(65vh, 500px);
+  overflow-y: auto;
+}
+
+.wayfinder-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.wayfinder-heading h2,
+.wayfinder-panel h3 {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.wayfinder-heading p,
+.wayfinder-hint,
+.wayfinder-save-status,
+.wayfinder-footnote {
+  margin-top: 5px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #57534e;
+}
+
+.wayfinder-heading button {
+  align-self: flex-start;
+  font-size: 22px;
+  line-height: 1;
+}
+
+.wayfinder-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 12px;
+}
+
+.wayfinder-tools button,
+.wayfinder-list button,
+.wayfinder-retry {
+  border: 1px solid #d6d3d1;
+  border-radius: 7px;
+  padding: 5px 8px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.wayfinder-tools button[aria-pressed="true"] {
+  border-color: #047857;
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.wayfinder-tools button:disabled {
+  opacity: 0.45;
+}
+
+.wayfinder-color {
+  display: block;
+  margin-top: 10px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.wayfinder-color select {
+  margin-top: 4px;
+}
+
+.wayfinder-save-status[data-error="true"] {
+  color: #b91c1c;
+}
+
+.wayfinder-panel h3 {
+  margin-top: 12px;
+}
+
+.wayfinder-list {
+  display: grid;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.wayfinder-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  padding: 6px;
+  border-radius: 7px;
+  background: #f5f5f4;
+}
+
+.wayfinder-list strong {
+  flex: 1 1 100%;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+
+.wayfinder-label {
+  color: #111;
+  font-family: Arial, sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  text-shadow: 0 0 3px white, 0 0 3px white;
+}
+
+#map.wayfinder-drawing {
+  cursor: crosshair;
+  touch-action: none;
+}
+
+@media (max-width: 560px) {
+  .wayfinder {
+    width: min(240px, calc(100% - 24px));
+  }
+
+  .wayfinder-panel {
+    max-height: min(45vh, 260px);
+  }
 }

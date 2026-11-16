@@ -125,9 +125,14 @@ function enterApp(result) {
 }
 
 function signOut(message) {
+  const event = new Event("toposearch:signing-out", { cancelable: true });
+  if (!document.dispatchEvent(event)) {
+    return;
+  }
   token = null;
   user = null;
   quota = null;
+  document.dispatchEvent(new CustomEvent("toposearch:signed-out"));
   storeToken(null);
   document.querySelectorAll("#auth-view form").forEach((form) => form.reset());
   closeMenu();
@@ -173,6 +178,13 @@ export function onQuotaChange(listener) {
 
 export function quotaRemaining() {
   return authEnabled && quota ? quota.remaining : null;
+}
+
+export async function wayfinderRequest(method = "GET", body) {
+  if (!authEnabled || !token) {
+    throw new Error("Sign in to save WayFinder markings.");
+  }
+  return api("/wayfinder", { method, body, auth: token });
 }
 
 export async function startGeneration() {

@@ -272,7 +272,53 @@
 
         <div class="map-shell overflow-hidden rounded-xl shadow-sm ring-1 ring-stone-300">
           <div id="map" aria-label="Interactive topographic map"></div>
+          <aside id="wayfinder" class="wayfinder" aria-label="WayFinder map marking tools">
+            <button id="wayfinder-toggle" class="wayfinder-toggle" type="button" aria-expanded="false" aria-controls="wayfinder-panel">WayFinder</button>
+            <div id="wayfinder-panel" class="wayfinder-panel" hidden>
+              <div class="wayfinder-heading">
+                <div><h2>WayFinder</h2><p>Mark your route and print it on your map.</p></div>
+                <button id="wayfinder-close" type="button" aria-label="Close WayFinder">×</button>
+              </div>
+              <div id="wayfinder-tools" class="wayfinder-tools" role="group" aria-label="WayFinder tools">
+                <button type="button" data-wayfinder-tool="pan" aria-pressed="true">Frame / pan</button>
+                <button type="button" data-wayfinder-tool="cp" aria-pressed="false">CP</button>
+                <button type="button" data-wayfinder-tool="ta" aria-pressed="false">TA</button>
+                <button type="button" data-wayfinder-tool="start" aria-pressed="false">Start</button>
+                <button type="button" data-wayfinder-tool="finish" aria-pressed="false">Finish</button>
+                <button type="button" data-wayfinder-tool="label" aria-pressed="false">Label</button>
+                <button type="button" data-wayfinder-tool="highlight" aria-pressed="false">Highlighter</button>
+              </div>
+              <label class="wayfinder-color" for="wayfinder-color">Highlighter color
+                <select id="wayfinder-color" class="field">
+                  <option value="yellow">Yellow</option>
+                  <option value="orange">Orange</option>
+                  <option value="cyan">Cyan</option>
+                  <option value="green">Green</option>
+                </select>
+              </label>
+              <p id="wayfinder-hint" class="wayfinder-hint">Choose a tool, then mark the map.</p>
+              <p id="wayfinder-save-status" class="wayfinder-save-status" role="status" aria-live="polite"></p>
+              <button id="wayfinder-retry" type="button" class="wayfinder-retry" hidden>Retry saving</button>
+              <h3>Markings <span id="wayfinder-count">0</span></h3>
+              <ul id="wayfinder-list" class="wayfinder-list"></ul>
+              <p class="wayfinder-footnote">Only markings inside the printed map outline appear in the PDF.</p>
+            </div>
+          </aside>
         </div>
+
+        <dialog id="wayfinder-name-dialog" aria-labelledby="wayfinder-name-title" class="w-[min(90vw,28rem)] rounded-xl bg-white p-6 text-stone-900 shadow-xl">
+          <form id="wayfinder-name-form">
+            <h2 id="wayfinder-name-title" class="text-lg font-semibold">Name this marking</h2>
+            <label for="wayfinder-name" class="label mt-4">Name</label>
+            <input id="wayfinder-name" class="field" maxlength="80" required autocomplete="off">
+            <p class="mt-2 text-xs text-stone-500">Up to 80 characters; Latin letters, numbers and punctuation.</p>
+            <p id="wayfinder-name-error" class="mt-2 text-sm text-red-700" role="alert" hidden></p>
+            <div class="mt-5 flex gap-2">
+              <button class="btn-primary" type="submit">Save marking</button>
+              <button id="wayfinder-name-cancel" class="btn-secondary" type="button">Cancel</button>
+            </div>
+          </form>
+        </dialog>
 
         <dialog id="print-choice" aria-labelledby="print-choice-title" class="w-[min(90vw,28rem)] rounded-xl bg-white p-6 text-stone-900 shadow-xl">
           <h2 id="print-choice-title" class="text-lg font-semibold">Choose a PDF map</h2>

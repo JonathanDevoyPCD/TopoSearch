@@ -19,3 +19,10 @@ CREATE TABLE IF NOT EXISTS reset_tokens (
   user_id INTEGER NOT NULL,
   expires_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS wayfinder (
+  user_id INTEGER PRIMARY KEY,
+  revision INTEGER NOT NULL,
+  markings TEXT NOT NULL,
+  FOREIGN KEY (user_id) REFERENCES users(id)
+);
