@@ -68,8 +68,8 @@ test("PDF renders marker descriptions in matching colour with a white stroke", (
   const commands = wayfinderPdfCommands(markings, bounds, layout, measureText);
   assert.match(commands, /1\.000 0\.502 0\.000 RG/);
   assert.match(commands, /q 1\.000 0\.502 0\.000 rg 1 1 1 RG 0\.8 w 1 j/);
-  assert.match(commands, /2 Tr .*?\(CP1\) Tj/);
-  assert.match(commands, /2 Tr .*?\(Caf\\351 \\\(old\\\)\) Tj/);
+  assert.match(commands, /\/Artifact BMC BT \/F2 10\.4 Tf 1 Tr ([\d.]+) ([\d.]+) Td \(CP1\) Tj ET EMC\nBT \/F2 10\.4 Tf 0 Tr \1 \2 Td \(CP1\) Tj ET/);
+  assert.match(commands, /\/Artifact BMC BT \/F2 9 Tf 1 Tr ([\d.]+) ([\d.]+) Td \(Caf\\351 \\\(old\\\)\) Tj ET EMC\nBT \/F2 9 Tf 0 Tr \1 \2 Td \(Caf\\351 \\\(old\\\)\) Tj ET/);
   assert.match(commands, /q 0\.000 0\.427 0\.898 rg 1 1 1 RG/);
   assert.match(commands, /0 0 0 rg BT \/F2 9 Tf .*?\(Start\) Tj/);
 });
@@ -79,8 +79,8 @@ test("PDF places both marker labels centred below the circle", () => {
   const layout = { pageHeight: 297, mapX: 10, mapY: 20, mapWidth: 100, mapHeight: 200 };
   const marker = { id: "a", type: "cp", name: "CP1", description: "Abandoned House", lat: -34, lng: 25 };
   const commands = wayfinderPdfCommands([marker], bounds, layout, measureText);
-  const name = /\/F2 10\.4 Tf 2 Tr ([\d.]+) ([\d.]+) Td \(CP1\)/.exec(commands);
-  const description = /\/F2 9 Tf 2 Tr ([\d.]+) ([\d.]+) Td \(Abandoned House\)/.exec(commands);
+  const name = /\/F2 10\.4 Tf 0 Tr ([\d.]+) ([\d.]+) Td \(CP1\)/.exec(commands);
+  const description = /\/F2 9 Tf 0 Tr ([\d.]+) ([\d.]+) Td \(Abandoned House\)/.exec(commands);
   assert.ok(name && description);
   const point = projectWayfinderPoint(marker.lat, marker.lng, bounds, layout);
   const centerX = point.x * 72 / 25.4;
@@ -104,8 +104,8 @@ test("PDF places both label lines in each selected direction", () => {
   };
   for (const [labelPosition, [dx, dy]] of Object.entries(directions)) {
     const commands = wayfinderPdfCommands([{ ...marker, labelPosition }], bounds, layout, measureText);
-    const name = /\/F2 10\.4 Tf 2 Tr ([\d.]+) ([\d.]+) Td \(TA1\)/.exec(commands);
-    const description = /\/F2 9 Tf 2 Tr ([\d.]+) ([\d.]+) Td \(Ferry Hotel\)/.exec(commands);
+    const name = /\/F2 10\.4 Tf 0 Tr ([\d.]+) ([\d.]+) Td \(TA1\)/.exec(commands);
+    const description = /\/F2 9 Tf 0 Tr ([\d.]+) ([\d.]+) Td \(Ferry Hotel\)/.exec(commands);
     assert.ok(name && description, labelPosition);
     const center = Number(name[1]) + measureText(marker.name, 10.4) / 2;
     assert.ok(Math.abs(center - (Number(description[1]) + measureText(marker.description, 9) / 2)) < 0.02, labelPosition);

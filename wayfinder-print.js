@@ -74,10 +74,15 @@ export function wayfinderPdfCommands(markings, bounds, layout, measureText) {
       const centerX = mmToPt(point.x + dx * 3.5) + dx * blockWidth / 2;
       const top = mmToPt(pageHeight - point.y - dy * 3.5) + (1 - dy) * blockHeight / 2;
       const nameY = top - mmToPt(2.6);
+      const markerText = (value, size, width, textY) => {
+        const text = `${number(centerX - width / 2)} ${number(textY)} Td (${pdfEscape(value)}) Tj ET`;
+        commands.push(`/Artifact BMC BT /F2 ${size} Tf 1 Tr ${text} EMC`);
+        commands.push(`BT /F2 ${size} Tf 0 Tr ${text}`);
+      };
       commands.push(`q ${rgb(wayfinderMarkerColor(marking))} rg 1 1 1 RG 0.8 w 1 j`);
-      commands.push(`BT /F2 10.4 Tf 2 Tr ${number(centerX - nameWidth / 2)} ${number(nameY)} Td (${pdfEscape(marking.name)}) Tj ET`);
+      markerText(marking.name, 10.4, nameWidth, nameY);
       if (marking.description) {
-        commands.push(`BT /F2 9 Tf 2 Tr ${number(centerX - descriptionWidth / 2)} ${number(nameY - mmToPt(4.1))} Td (${pdfEscape(marking.description)}) Tj ET`);
+        markerText(marking.description, 9, descriptionWidth, nameY - mmToPt(4.1));
       }
       commands.push("Q");
     } else {
