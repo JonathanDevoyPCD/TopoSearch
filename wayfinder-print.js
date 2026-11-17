@@ -1,5 +1,5 @@
 import { mercatorY } from "./print-layout.js";
-import { WAYFINDER_COLORS, wayfinderMarkerColor } from "./wayfinder-data.js";
+import { WAYFINDER_COLORS, WAYFINDER_LABEL_POSITIONS, wayfinderMarkerColor } from "./wayfinder-data.js";
 
 const mmToPt = (value) => value * 72 / 25.4;
 const number = (value) => value.toFixed(2);
@@ -66,11 +66,18 @@ export function wayfinderPdfCommands(markings, bounds, layout, measureText) {
     }
     const textX = point.x + (marking.type === "label" ? 0 : 3.5);
     if (marking.type === "cp" || marking.type === "ta") {
-      const centeredX = (value, size) => number(mmToPt(point.x) - measureText(value, size) / 2);
+      const [dx, dy] = WAYFINDER_LABEL_POSITIONS[marking.labelPosition ?? "bottom"];
+      const nameWidth = measureText(marking.name, 10.4);
+      const descriptionWidth = marking.description ? measureText(marking.description, 9) : 0;
+      const blockWidth = Math.max(nameWidth, descriptionWidth);
+      const blockHeight = marking.description ? 24.5 : 12.8;
+      const centerX = mmToPt(point.x + dx * 3.5) + dx * blockWidth / 2;
+      const top = mmToPt(pageHeight - point.y - dy * 3.5) + (1 - dy) * blockHeight / 2;
+      const nameY = top - mmToPt(2.6);
       commands.push(`q ${rgb(wayfinderMarkerColor(marking))} rg 1 1 1 RG 0.8 w 1 j`);
-      commands.push(`BT /F2 10.4 Tf 2 Tr ${centeredX(marking.name, 10.4)} ${y(point.y + 6.1)} Td (${pdfEscape(marking.name)}) Tj ET`);
+      commands.push(`BT /F2 10.4 Tf 2 Tr ${number(centerX - nameWidth / 2)} ${number(nameY)} Td (${pdfEscape(marking.name)}) Tj ET`);
       if (marking.description) {
-        commands.push(`BT /F2 9 Tf 2 Tr ${centeredX(marking.description, 9)} ${y(point.y + 10.2)} Td (${pdfEscape(marking.description)}) Tj ET`);
+        commands.push(`BT /F2 9 Tf 2 Tr ${number(centerX - descriptionWidth / 2)} ${number(nameY - mmToPt(4.1))} Td (${pdfEscape(marking.description)}) Tj ET`);
       }
       commands.push("Q");
     } else {

@@ -220,7 +220,7 @@
 .wayfinder-marker-label {
   display: inline-block;
   line-height: 1.2;
-  transform: translateX(-50%);
+  transform: translate(var(--wayfinder-label-x, -50%), var(--wayfinder-label-y, 0%));
   -webkit-text-stroke: 3px white;
   paint-order: stroke fill;
   text-shadow: none;

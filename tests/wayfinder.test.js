@@ -35,6 +35,17 @@ test("validates optional checkpoint and transition descriptions and colours", ()
   }
 });
 
+test("validates marker label positions and accepts older markings", () => {
+  const marker = { id: "one", type: "cp", name: "CP1", lat: -34, lng: 25 };
+  assert.equal(validateWayfinderMarkings([marker]), true);
+  for (const labelPosition of ["top", "top-right", "right", "bottom-right", "bottom", "bottom-left", "left", "top-left"]) {
+    assert.equal(validateWayfinderMarkings([{ ...marker, labelPosition }]), true);
+  }
+  for (const labelPosition of ["center", "constructor", "", null, 1]) {
+    assert.equal(validateWayfinderMarkings([{ ...marker, labelPosition }]), false);
+  }
+});
+
 test("projects markings into the Web Mercator map area", () => {
   const bounds = { west: 24, east: 26, north: -33, south: -35 };
   const layout = { mapX: 10, mapY: 20, mapWidth: 100, mapHeight: 200 };
@@ -77,6 +88,37 @@ test("PDF places both marker labels centred below the circle", () => {
   assert.ok(Math.abs(Number(description[1]) + measureText(marker.description, 9) / 2 - centerX) < 0.01);
   assert.ok(Number(name[2]) < (layout.pageHeight - point.y - 2.5) * 72 / 25.4);
   assert.ok(Number(description[2]) < Number(name[2]));
+});
+
+test("PDF places both label lines in each selected direction", () => {
+  const bounds = { west: 24, east: 26, north: -33, south: -35 };
+  const layout = { pageHeight: 297, mapX: 10, mapY: 20, mapWidth: 100, mapHeight: 200 };
+  const marker = { id: "a", type: "ta", name: "TA1", description: "Ferry Hotel", lat: -34, lng: 25 };
+  const point = projectWayfinderPoint(marker.lat, marker.lng, bounds, layout);
+  const px = point.x * 72 / 25.4;
+  const py = (layout.pageHeight - point.y) * 72 / 25.4;
+  const radius = 2.5 * 72 / 25.4;
+  const directions = {
+    top: [0, -1], "top-right": [1, -1], right: [1, 0], "bottom-right": [1, 1],
+    bottom: [0, 1], "bottom-left": [-1, 1], left: [-1, 0], "top-left": [-1, -1]
+  };
+  for (const [labelPosition, [dx, dy]] of Object.entries(directions)) {
+    const commands = wayfinderPdfCommands([{ ...marker, labelPosition }], bounds, layout, measureText);
+    const name = /\/F2 10\.4 Tf 2 Tr ([\d.]+) ([\d.]+) Td \(TA1\)/.exec(commands);
+    const description = /\/F2 9 Tf 2 Tr ([\d.]+) ([\d.]+) Td \(Ferry Hotel\)/.exec(commands);
+    assert.ok(name && description, labelPosition);
+    const center = Number(name[1]) + measureText(marker.name, 10.4) / 2;
+    assert.ok(Math.abs(center - (Number(description[1]) + measureText(marker.description, 9) / 2)) < 0.02, labelPosition);
+    const width = Math.max(measureText(marker.name, 10.4), measureText(marker.description, 9));
+    const top = Number(name[2]) + 2.6 * 72 / 25.4;
+    const bottom = top - 24.5;
+    if (dx < 0) assert.ok(center + width / 2 < px - radius, labelPosition);
+    if (dx > 0) assert.ok(center - width / 2 > px + radius, labelPosition);
+    if (dx === 0) assert.ok(Math.abs(center - px) < 0.01, labelPosition);
+    if (dy < 0) assert.ok(bottom > py + radius, labelPosition);
+    if (dy > 0) assert.ok(top < py - radius, labelPosition);
+    if (dy === 0) assert.ok(Math.abs((top + bottom) / 2 - py) < 0.01, labelPosition);
+  }
 });
 
 test("PDF clips highlights and includes only point centres within the frame", () => {

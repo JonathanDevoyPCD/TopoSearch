@@ -1,6 +1,6 @@
 import { authEnabled, wayfinderRequest } from "./auth.js";
 import {
-  WAYFINDER_COLORS, WAYFINDER_POINT_TYPES, validWayfinderName, validWayfinderDescription,
+  WAYFINDER_COLORS, WAYFINDER_LABEL_POSITIONS, WAYFINDER_POINT_TYPES, validWayfinderName, validWayfinderDescription,
   validateWayfinderMarkings, wayfinderMarkerColor
 } from "./wayfinder-data.js";
 
@@ -21,6 +21,7 @@ export function createWayfinder(map) {
   const markerDetails = document.querySelector("#wayfinder-marker-details");
   const descriptionInput = document.querySelector("#wayfinder-description");
   const markerColorInput = document.querySelector("#wayfinder-marker-color");
+  const labelPositionInput = document.querySelector("#wayfinder-label-position");
   const nameError = document.querySelector("#wayfinder-name-error");
   const container = map.getContainer();
   const layers = L.layerGroup().addTo(map);
@@ -102,9 +103,14 @@ export function createWayfinder(map) {
       const label = document.createElement("span");
       label.className = "wayfinder-label";
       const isMarker = marking.type === "cp" || marking.type === "ta";
+      let iconAnchor = marking.type === "label" ? [0, 8] : [-15, 8];
       if (isMarker) {
+        const [dx, dy] = WAYFINDER_LABEL_POSITIONS[marking.labelPosition ?? "bottom"];
+        iconAnchor = [-15 * dx, -15 * dy];
         label.classList.add("wayfinder-marker-label");
         label.style.color = wayfinderMarkerColor(marking);
+        label.style.setProperty("--wayfinder-label-x", `${(dx - 1) * 50}%`);
+        label.style.setProperty("--wayfinder-label-y", `${(dy - 1) * 50}%`);
         const name = document.createElement("span");
         name.className = "wayfinder-marker-name";
         name.textContent = marking.name;
@@ -118,7 +124,7 @@ export function createWayfinder(map) {
       L.marker([marking.lat, marking.lng], {
         pane: "wayfinder", interactive: false, keyboard: false,
         icon: L.divIcon({ className: "", html: label, iconSize: [0, 0],
-          iconAnchor: isMarker ? [0, -15] : marking.type === "label" ? [0, 8] : [-15, 8] })
+          iconAnchor })
       }).addTo(layers);
     }
   }
@@ -274,6 +280,7 @@ export function createWayfinder(map) {
     markerDetails.hidden = !isMarker;
     descriptionInput.value = isMarker ? marking.description ?? "" : "";
     markerColorInput.value = isMarker ? wayfinderMarkerColor(marking) : "#000000";
+    labelPositionInput.value = isMarker ? marking.labelPosition ?? "bottom" : "bottom";
     nameError.hidden = true;
     dialog.showModal();
     nameInput.focus();
@@ -296,8 +303,14 @@ export function createWayfinder(map) {
         nameError.hidden = false;
         return;
       }
+      if (!Object.hasOwn(WAYFINDER_LABEL_POSITIONS, labelPositionInput.value)) {
+        nameError.textContent = "Choose a valid label position.";
+        nameError.hidden = false;
+        return;
+      }
       details.description = description;
       details.color = markerColorInput.value;
+      details.labelPosition = labelPositionInput.value;
     }
     const callback = pendingName;
     pendingName = null;

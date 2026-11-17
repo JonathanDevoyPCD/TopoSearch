@@ -317,6 +317,17 @@
               <input id="wayfinder-description" class="field" maxlength="80" autocomplete="off">
               <label for="wayfinder-marker-color" class="label mt-4">Marker colour</label>
               <input id="wayfinder-marker-color" type="color" value="#e5007d">
+              <label for="wayfinder-label-position" class="label mt-4">Label position</label>
+              <select id="wayfinder-label-position" class="field">
+                <option value="top">Top</option>
+                <option value="top-right">Top right</option>
+                <option value="right">Right</option>
+                <option value="bottom-right">Bottom right</option>
+                <option value="bottom" selected>Bottom</option>
+                <option value="bottom-left">Bottom left</option>
+                <option value="left">Left</option>
+                <option value="top-left">Top left</option>
+              </select>
             </div>
             <p id="wayfinder-name-error" class="mt-2 text-sm text-red-700" role="alert" hidden></p>
             <div class="mt-5 flex gap-2">
