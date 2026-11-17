@@ -7,6 +7,14 @@ const area = { west: 16, east: 33.5, south: -35, north: -22 };
 const radius = 6378137;
 const eccentricitySquared = 0.0066943799901413165;
 
+test("A3 map rectangle matches the supplied design", () => {
+  const layout = paperLayout("A3");
+  assert.ok(Math.abs(layout.mapX - 7.087) < 0.01);
+  assert.ok(Math.abs(layout.mapY - 6.874) < 0.01);
+  assert.ok(Math.abs(layout.mapWidth - 282.94) < 0.02);
+  assert.ok(Math.abs(layout.mapHeight - 365.50) < 0.02);
+});
+
 test("each paper size frames the exact map area at 1:50,000 at the centre", () => {
   for (const [size, dimensions] of Object.entries(sizes)) {
     const layout = paperLayout(size);

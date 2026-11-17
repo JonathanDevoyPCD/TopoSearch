@@ -4,6 +4,7 @@ import { decodeTileResponse } from "./tile-image.js";
 import { PRINT_SCALE, paperLayout, frameGeometry, clampFrameCenter, mercatorY, rasterZoom } from "./print-layout.js";
 import { createWayfinder } from "./wayfinder.js";
 import { pdfEscape, wayfinderPdfCommands } from "./wayfinder-print.js";
+import { a3PdfCommands } from "./a3-print.js";
 
 const NGI_ROOT = "https://htonl.dev.openstreetmap.org/ngi-tiles";
 const SATELLITE_ROOT = "https://aerial.openstreetmap.org.za/layer/ngi-aerial";
@@ -164,7 +165,7 @@ document.querySelector("#wayfinder-frame-toggle").addEventListener("click", () =
   } else if (!frameCenter || !freeFrame) {
     setStatus("Select a leg and position its map before locking.", "error");
   } else {
-    wayfinder.setFrame({ id: crypto.randomUUID(), lat: frameCenter.lat, lng: frameCenter.lng, paperSize: paperSelect.value });
+    wayfinder.setFrame({ id: crypto.randomUUID(), lat: frameCenter.lat, lng: frameCenter.lng, paperSize: paperSelect.value, layoutVersion: 2 });
   }
 });
 
@@ -737,7 +738,9 @@ function makePdfContent({
   layerName,
   compact,
   paperSize,
-  markings
+  markings,
+  leg,
+  race
 }) {
   const commands = [];
   const text = (value, x, y, size, font = "F1", color = "0 0 0") => {
@@ -757,6 +760,16 @@ function makePdfContent({
     markerTextContext.font = `bold ${size}pt Arial, sans-serif`;
     return markerTextContext.measureText(value).width * 72 / 96;
   };
+  if (paperSize === "A3") {
+    return a3PdfCommands({
+      layout: { pageHeight, mapX, mapY, mapWidth, mapHeight },
+      lines, scale, markings, leg, race,
+      measureText: (value, size, font) => {
+        markerTextContext.font = `${font === "F2" ? "bold " : ""}${size}pt Arial, sans-serif`;
+        return markerTextContext.measureText(value).width * 72 / 96;
+      }
+    });
+  }
   const line = (x1, y1, x2, y2, width = 0.3, color = "0 0 0", dash = "[] 0 d") => {
     commands.push(
       `${dash} ${color} RG ${mmToPt(width).toFixed(2)} w ${mmToPt(x1).toFixed(2)} ${mmToPt(pageHeight - y1).toFixed(2)} m ${mmToPt(x2).toFixed(2)} ${mmToPt(pageHeight - y2).toFixed(2)} l S`
@@ -1186,23 +1199,24 @@ function makePdfContent({
   return commands.join("\n");
 }
 
-function assemblePdf(jpegBytes, imageWidth, imageHeight, pageWidth, pageHeight, content) {
+function assemblePdf(jpegBytes, imageWidth, imageHeight, pageWidth, pageHeight, content, logoBytes = null) {
   const encoder = new TextEncoder();
   const objects = [
     encoder.encode("<< /Type /Catalog /Pages 2 0 R >>"),
     encoder.encode("<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
     encoder.encode(
       `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${mmToPt(pageWidth).toFixed(2)} ${mmToPt(pageHeight).toFixed(2)}] ` +
-      "/Resources << /XObject << /Im0 4 0 R >> /Font << /F1 5 0 R /F2 6 0 R >> /ExtGState << /WF << /Type /ExtGState /ca 0.45 /CA 0.45 >> >> >> /Contents 7 0 R >>"
+      `/Resources << /XObject << /Im0 4 0 R${logoBytes ? " /Im1 8 0 R" : ""} >> /Font << /F1 5 0 R /F2 6 0 R >> /ExtGState << /WF << /Type /ExtGState /ca 0.45 /CA 0.45 >> >> >> /Contents 7 0 R >>`
     ),
     null,
     encoder.encode("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>"),
     encoder.encode("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>"),
     encoder.encode(`<< /Length ${encoder.encode(content).length} >>\nstream\n${content}\nendstream`)
   ];
-  const imageHeader = encoder.encode(
-    `<< /Type /XObject /Subtype /Image /Width ${imageWidth} /Height ${imageHeight} ` +
-    `/ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpegBytes.length} >>\nstream\n`
+  if (logoBytes) objects.push(null);
+  const imageHeader = (bytes, width, height) => encoder.encode(
+    `<< /Type /XObject /Subtype /Image /Width ${width} /Height ${height} ` +
+    `/ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${bytes.length} >>\nstream\n`
   );
   const imageFooter = encoder.encode("\nendstream");
   const chunks = [encoder.encode("%PDF-1.4\n%TopoSearch\n")];
@@ -1212,9 +1226,11 @@ function assemblePdf(jpegBytes, imageWidth, imageHeight, pageWidth, pageHeight, 
     offsets.push(offset);
     const objectHeader = encoder.encode(`${index + 1} 0 obj\n`);
     const objectFooter = encoder.encode("\nendobj\n");
-    if (index === 3) {
-      chunks.push(objectHeader, imageHeader, jpegBytes, imageFooter, objectFooter);
-      offset += objectHeader.length + imageHeader.length + jpegBytes.length + imageFooter.length + objectFooter.length;
+    if (index === 3 || index === 7) {
+      const bytes = index === 3 ? jpegBytes : logoBytes;
+      const header = imageHeader(bytes, index === 3 ? imageWidth : 600, index === 3 ? imageHeight : 236);
+      chunks.push(objectHeader, header, bytes, imageFooter, objectFooter);
+      offset += objectHeader.length + header.length + bytes.length + imageFooter.length + objectFooter.length;
     } else {
       chunks.push(objectHeader, object, objectFooter);
       offset += objectHeader.length + object.length + objectFooter.length;
@@ -1312,7 +1328,7 @@ function buildPrintLines(feature, layerName, tileSource, bounds, generatedAt, im
   };
 }
 
-async function createPrintPdf(feature, layerName, tileSource, signal, imagery, paperSize, markings) {
+async function createPrintPdf(feature, layerName, tileSource, signal, imagery, paperSize, markings, leg, race, logoBytes) {
   if (!feature) {
     throw new Error("Select a map sheet before printing.");
   }
@@ -1340,9 +1356,11 @@ async function createPrintPdf(feature, layerName, tileSource, signal, imagery, p
     layerName,
     compact,
     paperSize,
-    markings
+    markings,
+    leg,
+    race
   });
-  return { pdf: assemblePdf(jpeg, imageWidth, imageHeight, pageWidth, pageHeight, content), missingTiles };
+  return { pdf: assemblePdf(jpeg, imageWidth, imageHeight, pageWidth, pageHeight, content, logoBytes), missingTiles };
 }
 
 function openPrintChoice(variant = null) {
@@ -1355,10 +1373,14 @@ function openPrintChoice(variant = null) {
     setStatus("Lock a valid map selection for this leg before downloading.", "error");
     return;
   }
+  if (variant && wayfinder.raceForLeg(leg.id)?.distanceKm === undefined) {
+    setStatus("Add the race distance in Edit race details before downloading.", "error");
+    return;
+  }
   if (!printController && activeTarget()) {
     pendingLegPrint = variant ? { legId: leg.id, lockId: leg.frame.id, variant } : null;
     document.querySelector("#print-quota-note").textContent = pendingLegPrint
-      ? "The first download uses one generation, even if canceled or unsuccessful. Matching Master and Blank downloads are free while the frame and imagery settings stay unchanged."
+      ? "The first download uses one generation, even if canceled or unsuccessful. Existing locks use a new generation for the updated A3 layout. Matching Master and Blank downloads are free while the frame and imagery settings stay unchanged."
       : "Each PDF uses one map generation, even if canceled or unsuccessful.";
     printChoice.returnValue = "";
     printChoice.showModal();
@@ -1394,6 +1416,8 @@ printChoice.querySelector("form").addEventListener("submit", async (event) => {
   try {
     let markings;
     let legPair;
+    let printLeg = null;
+    let printRace = null;
     let legFileName = "";
     if (legPrint) {
       const leg = wayfinder.selectedLeg();
@@ -1410,12 +1434,22 @@ printChoice.querySelector("form").addEventListener("submit", async (event) => {
       if (!current?.frame || current.id !== legPrint.legId || current.frame.id !== legPrint.lockId) {
         throw new Error("The leg or its locked frame changed while saving. Select it again before downloading.");
       }
+      const race = wayfinder.raceForLeg(current.id);
+      if (race?.distanceKm === undefined) throw new Error("Add the race distance before downloading.");
+      printLeg = structuredClone(current);
+      printRace = structuredClone(race);
       legPair = { legId: leg.id, lockId: leg.frame.id, layer: fileLayer, source: tileSource, imagery };
     } else {
       markings = wayfinder.snapshot();
     }
+    let logoBytes = null;
+    if (paperSize === "A3") {
+      const response = await fetch("./assets/race-template-logo.jpg", { signal: printController.signal });
+      if (!response.ok) throw new Error("The A3 template logo could not be loaded.");
+      logoBytes = new Uint8Array(await response.arrayBuffer());
+    }
     printToken = await startGeneration(legPair);
-    const { pdf, missingTiles } = await createPrintPdf(feature, fileLayer, tileSource, printController.signal, imagery, paperSize, markings);
+    const { pdf, missingTiles } = await createPrintPdf(feature, fileLayer, tileSource, printController.signal, imagery, paperSize, markings, printLeg, printRace, logoBytes);
     if (printController.signal.aborted) {
       return;
     }

@@ -38,7 +38,7 @@ test("saved race legs retain paired download quota accounting", async (t) => {
     headers: { Origin: origin, Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     body: JSON.stringify(body)
   }), env);
-  const data = { version: 2, races: [{ id: "race", name: "Race" }],
+  const data = { version: 2, races: [{ id: "race", name: "Race", distanceKm: 120 }],
     legs: [{ id: "leg", raceId: "race", name: "LEG 1", description: "",
       frame: { id: "lock", lat: -34, lng: 25, paperSize: "A3" } }], markings: [] };
   assert.equal((await post("/wayfinder", { revision: 0, markings: data })).status, 200);
@@ -49,4 +49,10 @@ test("saved race legs retain paired download quota accounting", async (t) => {
   assert.equal(second.status, 200);
   assert.equal((await first.json()).quota.used, 1);
   assert.equal((await second.json()).quota.used, 1);
+  data.legs[0].frame.id = "new-layout-lock";
+  data.legs[0].frame.layoutVersion = 2;
+  assert.equal((await post("/wayfinder", { revision: 1, markings: data })).status, 200);
+  const updated = await post("/pdf/start", { legPair: { ...pair, lockId: "new-layout-lock" } });
+  assert.equal(updated.status, 200);
+  assert.equal((await updated.json()).quota.used, 2);
 });

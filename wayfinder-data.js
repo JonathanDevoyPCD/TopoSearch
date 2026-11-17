@@ -35,6 +35,10 @@ export function validWayfinderDescription(value) {
   return value === "" || validWayfinderName(value);
 }
 
+export function validRaceDistance(value) {
+  return typeof value === "number" && Number.isFinite(value) && value > 0;
+}
+
 export function wayfinderMarkerColor(marking) {
   return marking.color ?? WAYFINDER_MARKER_COLORS[marking.type];
 }
@@ -97,7 +101,8 @@ export function validateWayfinderData(data) {
     if (!Array.isArray(data.races) || data.races.length > WAYFINDER_MAX_RACES) return false;
     for (const race of data.races) {
       if (!race || typeof race.id !== "string" || !/^[a-zA-Z0-9-]{1,64}$/.test(race.id) ||
-          raceIds.has(race.id) || !validWayfinderName(race.name)) return false;
+          raceIds.has(race.id) || !validWayfinderName(race.name) ||
+          (race.distanceKm !== undefined && !validRaceDistance(race.distanceKm))) return false;
       raceIds.add(race.id);
     }
   }
@@ -122,15 +127,24 @@ export function validateWayfinderData(data) {
 
 export function migrateWayfinderData(data, newId) {
   if (!validateWayfinderData(data)) throw new Error("The saved markings are invalid.");
-  if (!Array.isArray(data) && data.version === 2) return structuredClone(data);
+  if (!Array.isArray(data) && data.version === 2) {
+    const migrated = structuredClone(data);
+    for (const leg of migrated.legs) {
+      if (leg.frame && leg.frame.layoutVersion === undefined) {
+        leg.frame.id = newId();
+        leg.frame.layoutVersion = 2;
+      }
+    }
+    return migrated;
+  }
   const markings = structuredClone(Array.isArray(data) ? data : data.markings);
   const legs = structuredClone(Array.isArray(data) ? [] : data.legs);
   if (!markings.length && !legs.length) return { version: 2, races: [], legs: [], markings: [] };
   const race = { id: newId(), name: "Imported race" };
   for (const leg of legs) {
     leg.raceId = race.id;
-    if (leg.frame && leg.frame.paperSize !== "A3") {
-      leg.frame = { ...leg.frame, id: newId(), paperSize: "A3" };
+    if (leg.frame) {
+      leg.frame = { ...leg.frame, id: newId(), paperSize: "A3", layoutVersion: 2 };
     }
   }
   const legIds = new Set(legs.map((leg) => leg.id));
@@ -151,6 +165,7 @@ export function validWayfinderFrame(frame) {
   return Boolean(frame && typeof frame === "object" &&
     typeof frame.id === "string" && /^[a-zA-Z0-9-]{1,64}$/.test(frame.id) &&
     validPosition(frame.lat, frame.lng) &&
+    (frame.layoutVersion === undefined || frame.layoutVersion === 2) &&
     ["A0", "A1", "A2", "A3", "A4"].includes(frame.paperSize));
 }
 

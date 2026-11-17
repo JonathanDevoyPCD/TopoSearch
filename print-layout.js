@@ -17,16 +17,17 @@ export function paperLayout(size) {
   }
   const [pageWidth, pageHeight] = dimensions;
   const compact = pageWidth < 500;
-  const mapX = compact ? 18 : 110;
-  const mapY = compact ? 30 : 62;
-  const bottom = compact ? 55 : 190;
+  const mapX = size === "A3" ? 37.1 * 297 / 1554.8 : compact ? 18 : 110;
+  const mapY = size === "A3" ? 36 * 420 / 2199.6 : compact ? 30 : 62;
+  const mapWidth = size === "A3" ? 1481.2 * 297 / 1554.8 : pageWidth - 2 * mapX;
+  const mapHeight = size === "A3" ? 1914.2 * 420 / 2199.6 : pageHeight - mapY - (compact ? 55 : 190);
   return {
     pageWidth,
     pageHeight,
     mapX,
     mapY,
-    mapWidth: pageWidth - 2 * mapX,
-    mapHeight: pageHeight - mapY - bottom,
+    mapWidth,
+    mapHeight,
     compact
   };
 }

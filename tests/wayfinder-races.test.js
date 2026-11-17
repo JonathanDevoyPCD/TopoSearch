@@ -14,17 +14,39 @@ test("imports existing legs and unassigned markings into a race without mutating
       { id: "b", type: "ta", name: "TA1", lat: -34, lng: 25, showOnBlank: true }
     ]
   };
-  const ids = ["race", "new-lock", "imported"];
+  const ids = ["race", "new-lock", "new-a3-lock", "imported"];
   const data = migrateWayfinderData(old, () => ids.shift());
   assert.equal(validateWayfinderData(data), true);
   assert.deepEqual(data.races, [{ id: "race", name: "Imported race" }]);
   assert.deepEqual(data.legs.map((leg) => leg.raceId), ["race", "race", "race"]);
-  assert.deepEqual(data.legs[0].frame, { ...old.legs[0].frame, id: "new-lock", paperSize: "A3" });
-  assert.deepEqual(data.legs[1].frame, old.legs[1].frame);
+  assert.deepEqual(data.legs[0].frame, { ...old.legs[0].frame, id: "new-lock", paperSize: "A3", layoutVersion: 2 });
+  assert.deepEqual(data.legs[1].frame, { ...old.legs[1].frame, id: "new-a3-lock", layoutVersion: 2 });
   assert.equal(data.markings[1].legId, "imported");
   assert.equal(legWayfinderMarkings(data, "imported", true)[0].id, "b");
   assert.equal(old.legs[0].frame.paperSize, "A1");
   assert.equal(old.markings[1].legId, undefined);
+});
+
+test("old A3 locks get a new identity once, while current locks remain unchanged", () => {
+  const old = { version: 2, races: [{ id: "race", name: "Race", distanceKm: 120 }],
+    legs: [{ id: "leg", raceId: "race", name: "LEG 1", description: "",
+      frame: { id: "old", lat: -34, lng: 25, paperSize: "A3" } }], markings: [] };
+  const updated = migrateWayfinderData(old, () => "new");
+  assert.deepEqual(updated.legs[0].frame, { ...old.legs[0].frame, id: "new", layoutVersion: 2 });
+  assert.equal(old.legs[0].frame.id, "old");
+  assert.deepEqual(migrateWayfinderData(updated, () => { throw new Error("Already migrated"); }), updated);
+  assert.equal(validateWayfinderData(updated), true);
+});
+
+test("race distance is optional for existing races and must be finite and positive when set", () => {
+  const data = { version: 2, races: [{ id: "race", name: "Race" }], legs: [], markings: [] };
+  assert.equal(validateWayfinderData(data), true);
+  for (const distanceKm of [120, 0.5]) {
+    assert.equal(validateWayfinderData({ ...data, races: [{ ...data.races[0], distanceKm }] }), true);
+  }
+  for (const distanceKm of [0, -1, Infinity, "120", null]) {
+    assert.equal(validateWayfinderData({ ...data, races: [{ ...data.races[0], distanceKm }] }), false);
+  }
 });
 
 test("empty accounts start without a race; old marker arrays get an imported leg", () => {

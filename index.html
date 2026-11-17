@@ -264,7 +264,8 @@
               <div id="wayfinder-race" hidden>
                 <button id="wayfinder-races-back" class="wayfinder-back" type="button">← Back to races</button>
                 <h3 id="wayfinder-race-name"></h3>
-                <button id="wayfinder-edit-race" type="button" class="btn-secondary">Edit race name</button>
+                <p id="wayfinder-race-distance-label" class="wayfinder-footnote"></p>
+                <button id="wayfinder-edit-race" type="button" class="btn-secondary">Edit race details</button>
                 <button id="wayfinder-master" class="btn-primary w-full" type="button">Create Map</button>
               </div>
               <div id="wayfinder-maps" hidden>
@@ -360,6 +361,8 @@
             <h2 id="wayfinder-race-title" class="text-lg font-semibold">Create Race</h2>
             <label for="wayfinder-race-input" class="label mt-4">Race name</label>
             <input id="wayfinder-race-input" class="field" maxlength="80" required autocomplete="off">
+            <label for="wayfinder-race-distance" class="label mt-4">Race distance (km)</label>
+            <input id="wayfinder-race-distance" class="field" type="number" min="0" step="any" required inputmode="decimal">
             <p id="wayfinder-race-error" class="mt-2 text-sm text-red-700" role="alert" hidden></p>
             <div class="mt-5 flex gap-2">
               <button id="wayfinder-race-submit" class="btn-primary" type="submit">Create Race</button>

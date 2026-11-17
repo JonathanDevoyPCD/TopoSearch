@@ -89,8 +89,10 @@ The sidebar keeps **Map blend** at the top and groups map settings, WayFinder,
 and print controls in expandable sections.
 Use **Hide tools** to free up space on the map while keeping the blend slider visible.
 
-Open **WayFinder > Create Race**, name the race, then choose **Create Map >
-Add Leg**. Each leg is an A3 map. Position its frame by dragging it or clicking
+Open **WayFinder > Create Race**, enter the race name and distance in kilometres,
+then choose **Create Map > Add Leg**. Edit these details from the race screen.
+Existing races need a distance added before their legs can be downloaded.
+Each leg is an A3 map. Position its frame by dragging it or clicking
 the map, then lock it before downloading. Markings may be added before or after
 locking. Other legs in the same race remain visible at 20% opacity while the
 selected leg is edited; they are not included in its PDF.
@@ -108,9 +110,10 @@ An unlocked frame and button are green; a locked frame and button are red.
 
 Existing WayFinder data is imported into an **Imported race** when loaded.
 Unassigned markings are kept together in an **Imported markings** leg.
-Previously locked non-A3 frames are automatically converted to A3 with a new
-lock; the next matching download uses a new generation. Existing A3 locks retain
-their paid download pair.
+Existing locked frames are converted to the new, larger A3 map area at the same
+centre with a new lock. The next matching Master/Blank download pair uses a new
+generation. If a converted frame is outside the downloadable area, unlock and
+reposition it before downloading.
 
 Choose CP, TA, Start,
 Finish or Label, click the map and name the marking. CP and TA names are
@@ -135,6 +138,9 @@ an imported unassigned-markings leg may exceed the leg limit by one.
 Topographic and aerial PDFs use the selected leg map. They include its
 WayFinder points whose centres are within
 the inner map outline, and clip highlight strokes at that outline.
+The A3 design includes the supplied Woodridge logo, the leg name, race distance,
+scale and calculated magnetic declination. Its scale bar is correct for the
+printed scale at the frame centre; print at actual size.
 Markings are not added to original race-map TIF files.
 
 **Map blend** fades between NGI topographic maps and the

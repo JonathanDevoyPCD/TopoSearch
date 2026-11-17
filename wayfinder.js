@@ -1,7 +1,7 @@
 import { authEnabled, wayfinderRequest } from "./auth.js";
 import {
   WAYFINDER_COLORS, WAYFINDER_LABEL_POSITIONS, WAYFINDER_MAX_LEGS, WAYFINDER_MAX_RACES, WAYFINDER_POINT_TYPES,
-  validWayfinderName, validWayfinderDescription, validateWayfinderData, validateWayfinderMarkings,
+  validWayfinderName, validWayfinderDescription, validRaceDistance, validateWayfinderData, validateWayfinderMarkings,
   visibleWayfinderMarkings, legWayfinderMarkings, wayfinderMarkerColor, migrateWayfinderData
 } from "./wayfinder-data.js";
 import { frameGeometry } from "./print-layout.js";
@@ -18,6 +18,7 @@ export function createWayfinder(map) {
   const raceDialog = document.querySelector("#wayfinder-race-dialog");
   const raceForm = document.querySelector("#wayfinder-race-form");
   const raceInput = document.querySelector("#wayfinder-race-input");
+  const raceDistance = document.querySelector("#wayfinder-race-distance");
   const raceError = document.querySelector("#wayfinder-race-error");
   const editor = document.querySelector("#wayfinder-editor");
   const editorTitle = document.querySelector("#wayfinder-editor-title");
@@ -289,7 +290,11 @@ export function createWayfinder(map) {
     mapsScreen.hidden = screen !== "maps";
     editor.hidden = screen !== "editor";
     document.querySelector("#wayfinder-race-library").hidden = !races.length;
-    document.querySelector("#wayfinder-race-name").textContent = races.find((race) => race.id === selectedRace)?.name ?? "";
+    const race = races.find((entry) => entry.id === selectedRace);
+    document.querySelector("#wayfinder-race-name").textContent = race?.name ?? "";
+    document.querySelector("#wayfinder-race-distance-label").textContent = race?.distanceKm === undefined
+      ? "Race distance not set. Add it before downloading a leg."
+      : `Race distance: ${race.distanceKm} km`;
     document.querySelector("#wayfinder-master").textContent =
       legs.some((entry) => entry.raceId === selectedRace) ? "View Maps" : "Create Map";
     raceList.replaceChildren();
@@ -450,7 +455,8 @@ export function createWayfinder(map) {
           !validateWayfinderData(result.markings)) {
         throw new Error("The saved markings are invalid.");
       }
-      const needsMigration = Array.isArray(result.markings) || result.markings.version !== 2;
+      const needsMigration = Array.isArray(result.markings) || result.markings.version !== 2 ||
+        result.markings.legs.some((leg) => leg.frame && leg.frame.layoutVersion === undefined);
       const data = migrateWayfinderData(result.markings, () => crypto.randomUUID());
       markings = data.markings;
       legs = data.legs;
@@ -682,6 +688,7 @@ export function createWayfinder(map) {
     document.querySelector("#wayfinder-race-title").textContent = "Create Race";
     document.querySelector("#wayfinder-race-submit").textContent = "Create Race";
     raceInput.value = "";
+    raceDistance.value = "";
     raceError.hidden = true;
     raceDialog.showModal();
     raceInput.focus();
@@ -690,9 +697,10 @@ export function createWayfinder(map) {
     const race = races.find((entry) => entry.id === selectedRace);
     if (!race) return;
     editingRace = true;
-    document.querySelector("#wayfinder-race-title").textContent = "Edit race name";
+    document.querySelector("#wayfinder-race-title").textContent = "Edit race details";
     document.querySelector("#wayfinder-race-submit").textContent = "Save race";
     raceInput.value = race.name;
+    raceDistance.value = race.distanceKm ?? "";
     raceError.hidden = true;
     raceDialog.showModal();
     raceInput.focus();
@@ -706,12 +714,19 @@ export function createWayfinder(map) {
       raceError.hidden = false;
       return;
     }
+    const distanceKm = Number(raceDistance.value);
+    if (!raceDistance.value || !validRaceDistance(distanceKm)) {
+      raceError.textContent = "Enter a race distance greater than zero in kilometres.";
+      raceError.hidden = false;
+      return;
+    }
     if (editingRace) {
       const race = races.find((entry) => entry.id === selectedRace);
       if (!race) return;
       race.name = name;
+      race.distanceKm = distanceKm;
     } else {
-      const race = { id: crypto.randomUUID(), name };
+      const race = { id: crypto.randomUUID(), name, distanceKm };
       races.push(race);
       selectedRace = race.id;
     }
@@ -862,6 +877,10 @@ export function createWayfinder(map) {
   }
   return {
     selectedLeg: () => screen === "editor" ? legs.find((entry) => entry.id === selectedView) ?? null : null,
+    raceForLeg: (legId) => {
+      const leg = legs.find((entry) => entry.id === legId);
+      return races.find((race) => race.id === leg?.raceId) ?? null;
+    },
     setDraft: (center) => {
       const leg = screen === "editor" ? legs.find((entry) => entry.id === selectedView) : null;
       if (!leg || leg.frame || (leg.draft?.lat === center.lat && leg.draft?.lng === center.lng)) return;
