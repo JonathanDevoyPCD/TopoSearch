@@ -23,6 +23,7 @@ export const WAYFINDER_LABEL_POSITIONS = {
 export const WAYFINDER_POINT_TYPES = ["cp", "ta", "start", "finish", "label"];
 export const WAYFINDER_MAX_MARKINGS = 500;
 export const WAYFINDER_MAX_POINTS = 10000;
+export const WAYFINDER_MAX_LEGS = 100;
 
 export function validWayfinderName(value) {
   return typeof value === "string" && value.trim().length > 0 &&
@@ -79,4 +80,52 @@ export function validateWayfinderMarkings(markings) {
     }
   }
   return true;
+}
+
+export function validateWayfinderData(data) {
+  if (Array.isArray(data)) {
+    return validateWayfinderMarkings(data);
+  }
+  if (!data || typeof data !== "object" || data.version !== 1 ||
+      !Array.isArray(data.legs) || data.legs.length > WAYFINDER_MAX_LEGS ||
+      !validateWayfinderMarkings(data.markings)) {
+    return false;
+  }
+  const legIds = new Set();
+  for (const leg of data.legs) {
+    if (!leg || typeof leg.id !== "string" || !/^[a-zA-Z0-9-]{1,64}$/.test(leg.id) ||
+        leg.id === "master" || leg.id === "blank" ||
+        legIds.has(leg.id) || !validWayfinderName(leg.name) ||
+        !validWayfinderDescription(leg.description) ||
+        (leg.frame !== undefined && !validWayfinderFrame(leg.frame))) {
+      return false;
+    }
+    legIds.add(leg.id);
+  }
+  return data.markings.every((marking) =>
+    (marking.legId === undefined || legIds.has(marking.legId)) &&
+    (marking.showOnBlank === undefined || typeof marking.showOnBlank === "boolean"));
+}
+
+export function validWayfinderFrame(frame) {
+  return Boolean(frame && typeof frame === "object" &&
+    typeof frame.id === "string" && /^[a-zA-Z0-9-]{1,64}$/.test(frame.id) &&
+    validPosition(frame.lat, frame.lng) &&
+    ["A0", "A1", "A2", "A3", "A4"].includes(frame.paperSize));
+}
+
+export function visibleWayfinderMarkings(data, view) {
+  if (view === "master") {
+    return data.markings;
+  }
+
+  if (view === "blank") {
+    return data.markings.filter((marking) => marking.showOnBlank === true);
+  }
+  return data.markings.filter((marking) => marking.legId === view);
+}
+
+export function legWayfinderMarkings(data, legId, blank = false) {
+  return data.markings.filter((marking) =>
+    marking.legId === legId && (!blank || marking.showOnBlank === true));
 }

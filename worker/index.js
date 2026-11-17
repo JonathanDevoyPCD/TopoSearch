@@ -1,6 +1,6 @@
 const NGI_TILE_ORIGIN = "https://htonl.dev.openstreetmap.org";
 import { HttpError, handleAuth, isAuthRoute, requirePrintToken, sessionFor } from "./auth.js";
-import { validateWayfinderMarkings } from "../wayfinder-data.js";
+import { validateWayfinderData } from "../wayfinder-data.js";
 const TILE_PATH = /^\/(50k|250k)\/(\d+)\/(\d+)\/(\d+)\.png$/;
 const MAX_ZOOM = { "50k": 15, "250k": 12 };
 const ALLOWED_AREA = {
@@ -117,7 +117,7 @@ export default {
           throw new HttpError(400, "Invalid WayFinder data.");
         }
         if (!body || !Number.isSafeInteger(body.revision) || body.revision < 0 ||
-            !validateWayfinderMarkings(body.markings)) {
+            !validateWayfinderData(body.markings)) {
           throw new HttpError(400, "Invalid WayFinder data.");
         }
         const result = await env.DB.prepare(

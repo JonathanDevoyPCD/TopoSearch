@@ -211,7 +211,19 @@
 
       <main class="mx-auto flex w-full flex-1 flex-col gap-4">
         <section class="rounded-xl bg-white p-4 shadow-sm ring-1 ring-stone-200" aria-label="Map controls">
-          <div class="flex flex-wrap items-end gap-x-4 gap-y-3">
+          <div class="sidebar-blend">
+            <label class="label" for="map-blend">Map blend</label>
+            <input id="map-blend" class="w-full accent-emerald-700" type="range" min="0" max="100" value="0" aria-valuetext="100% topographic, 0% aerial imagery" aria-describedby="blend-description">
+            <div id="blend-description" class="flex justify-between text-xs text-stone-500">
+              <span>Topographic</span><span>Aerial</span>
+            </div>
+            <p class="mt-1 text-xs text-stone-500">NGI aerial imagery; coverage and dates vary.</p>
+            <button id="sidebar-toggle" class="sidebar-toggle" type="button" aria-expanded="true" aria-controls="sidebar-tools">Hide tools</button>
+          </div>
+          <div id="sidebar-tools">
+          <details class="sidebar-section">
+            <summary>Map settings</summary>
+            <div class="sidebar-content">
             <div class="w-full sm:w-52">
               <label class="label" for="map-layer">Map layer</label>
               <select id="map-layer" class="field">
@@ -240,44 +252,38 @@
               <input id="sheet-index" type="checkbox" class="h-4 w-4 rounded border-stone-300 text-emerald-700 focus:ring-emerald-600">
               Outline centre sheet
             </label>
-            <div class="w-full sm:w-56">
-              <label class="label" for="map-blend">Map blend</label>
-              <input id="map-blend" class="w-full accent-emerald-700" type="range" min="0" max="100" value="0" aria-valuetext="100% topographic, 0% aerial imagery" aria-describedby="blend-description">
-              <div id="blend-description" class="flex justify-between text-xs text-stone-500">
-                <span>Topographic</span><span>Aerial</span>
+            </div>
+          </details>
+          <details id="wayfinder" class="sidebar-section">
+            <summary id="wayfinder-toggle">WayFinder</summary>
+            <div id="wayfinder-panel" class="sidebar-content">
+              <select id="wayfinder-view" hidden aria-label="Selected WayFinder map"></select>
+              <div id="wayfinder-home">
+                <p class="wayfinder-footnote">Choose a race leg or view all markings.</p>
+                <div class="wayfinder-home-actions">
+                  <button id="wayfinder-master" type="button">Master Map</button>
+                  <button id="wayfinder-blank" type="button">Blank Map</button>
+                </div>
+                <h3>Race legs</h3>
+                <ul id="wayfinder-leg-list" class="wayfinder-leg-list"></ul>
+                <button id="wayfinder-add-leg" type="button">Add leg</button>
               </div>
-              <p class="mt-1 text-xs text-stone-500">NGI aerial imagery; coverage and dates vary.</p>
-            </div>
-
-            <div class="ml-auto flex flex-wrap items-center gap-2">
-              <button class="btn-primary" id="print-map" type="button" disabled>
-                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                  <path d="M7 8V3h10v5M7 17H5a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2M7 14h10v7H7z"></path>
-                  <path d="M17 11h.01"></path>
-                </svg>
-                <span>Download print PDF</span>
-              </button>
-              <button class="btn-secondary" id="cancel-print" type="button" hidden>Cancel</button>
-              <a class="btn-accent" id="race-map" href="#" hidden>
-                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"></path></svg>
-                <span><span id="race-map-label">Original race map (TIF)</span> <small id="race-map-size" class="font-normal opacity-90"></small></span>
-              </a>
-              <a class="link text-sm" id="race-map-world" href="#" hidden>World file (.tfw)</a>
-              <button class="btn-secondary" id="clear-frame" type="button">Clear frame</button>
-            </div>
-          </div>
-          <p class="mt-3 text-xs text-stone-500">PDFs are 1:50 000 at the frame centre when printed at actual size; scale varies slightly across the map. The inner outline is the printed map and the shaded border holds page details. Original race-map TIF files have separate print settings.</p>
-          <p id="map-status" class="mt-3 text-sm text-stone-600 data-[state=error]:text-red-700" role="status" aria-live="polite">Loading map sheets…</p>
-        </section>
-
-        <div class="map-shell overflow-hidden rounded-xl shadow-sm ring-1 ring-stone-300">
-          <div id="map" aria-label="Interactive topographic map"></div>
-          <aside id="wayfinder" class="wayfinder" aria-label="WayFinder map marking tools">
-            <button id="wayfinder-toggle" class="wayfinder-toggle" type="button" aria-expanded="false" aria-controls="wayfinder-panel">WayFinder</button>
-            <div id="wayfinder-panel" class="wayfinder-panel" hidden>
-              <div class="wayfinder-heading">
-                <div><h2>WayFinder</h2><p>Mark your route and print it on your map.</p></div>
-                <button id="wayfinder-close" type="button" aria-label="Close WayFinder">×</button>
+              <div id="wayfinder-editor" class="sidebar-content" hidden>
+              <button id="wayfinder-back" class="wayfinder-back" type="button">← Back to WayFinder</button>
+              <h3 id="wayfinder-editor-title"></h3>
+              <div class="wayfinder-leg-actions">
+                <button id="wayfinder-edit-leg" type="button" hidden>Edit leg</button>
+                <button id="wayfinder-delete-leg" type="button" hidden>Delete leg</button>
+              </div>
+              <p id="wayfinder-view-description" class="wayfinder-hint"></p>
+              <div id="wayfinder-leg-map-controls" class="wayfinder-leg-map-controls" hidden>
+                <button id="wayfinder-frame-toggle" type="button">Lock map selection</button>
+                <p id="wayfinder-frame-status" class="wayfinder-footnote"></p>
+                <button id="wayfinder-download-master" type="button">Download Master PDF</button>
+                <button id="wayfinder-download-blank" type="button">Download Blank PDF</button>
+                <button id="wayfinder-cancel-print" type="button" hidden>Cancel download</button>
+                <p id="wayfinder-print-status" class="wayfinder-footnote" aria-live="polite"></p>
+                <p class="wayfinder-footnote">The matching Master and Blank PDFs share one generation while this frame and imagery settings stay unchanged.</p>
               </div>
               <div id="wayfinder-tools" class="wayfinder-tools" role="group" aria-label="WayFinder tools">
                 <button type="button" data-wayfinder-tool="pan" aria-pressed="true">Frame / pan</button>
@@ -296,15 +302,64 @@
                   <option value="green">Green</option>
                 </select>
               </label>
+              <label class="wayfinder-blank-option"><input id="wayfinder-highlight-hide" type="checkbox" checked> Hide new highlights on Blank Map</label>
               <p id="wayfinder-hint" class="wayfinder-hint">Choose a tool, then mark the map.</p>
+              <details class="wayfinder-markings">
+                <summary>Markings <span id="wayfinder-count">0</span></summary>
+                <p id="wayfinder-list-hint" class="wayfinder-footnote"></p>
+                <ul id="wayfinder-list" class="wayfinder-list"></ul>
+              </details>
+              <p class="wayfinder-footnote">Only markings inside the printed map outline appear in the PDF.</p>
+              </div>
               <p id="wayfinder-save-status" class="wayfinder-save-status" role="status" aria-live="polite"></p>
               <button id="wayfinder-retry" type="button" class="wayfinder-retry" hidden>Retry saving</button>
-              <h3>Markings <span id="wayfinder-count">0</span></h3>
-              <ul id="wayfinder-list" class="wayfinder-list"></ul>
-              <p class="wayfinder-footnote">Only markings inside the printed map outline appear in the PDF.</p>
             </div>
-          </aside>
+          </details>
+          <details class="sidebar-section">
+            <summary>Print and download</summary>
+            <div class="sidebar-content">
+            <div class="flex flex-wrap items-center gap-2">
+              <button class="btn-primary" id="print-map" type="button" disabled>
+                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M7 8V3h10v5M7 17H5a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2M7 14h10v7H7z"></path>
+                  <path d="M17 11h.01"></path>
+                </svg>
+                <span>Download print PDF</span>
+              </button>
+              <button class="btn-secondary" id="cancel-print" type="button" hidden>Cancel</button>
+              <a class="btn-accent" id="race-map" href="#" hidden>
+                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"></path></svg>
+                <span><span id="race-map-label">Original race map (TIF)</span> <small id="race-map-size" class="font-normal opacity-90"></small></span>
+              </a>
+              <a class="link text-sm" id="race-map-world" href="#" hidden>World file (.tfw)</a>
+              <button class="btn-secondary" id="clear-frame" type="button">Clear frame</button>
+            </div>
+            <p id="generic-print-hint" class="wayfinder-footnote" hidden>Use the Master or Blank download in the selected leg, or return to WayFinder to choose a global map.</p>
+            <p class="mt-3 text-xs text-stone-500">PDFs are 1:50 000 at the frame centre when printed at actual size; scale varies slightly across the map. The inner outline is the printed map and the shaded border holds page details. Original race-map TIF files have separate print settings.</p>
+            </div>
+          </details>
+          <p id="map-status" class="mt-3 text-sm text-stone-600 data-[state=error]:text-red-700" role="status" aria-live="polite">Loading map sheets…</p>
+          </div>
+        </section>
+
+        <div class="map-shell overflow-hidden rounded-xl shadow-sm ring-1 ring-stone-300">
+          <div id="map" aria-label="Interactive topographic map"></div>
         </div>
+
+        <dialog id="wayfinder-leg-dialog" aria-labelledby="wayfinder-leg-title" class="w-[min(90vw,28rem)] rounded-xl bg-white p-6 text-stone-900 shadow-xl">
+          <form id="wayfinder-leg-form">
+            <h2 id="wayfinder-leg-title" class="text-lg font-semibold">Leg details</h2>
+            <label for="wayfinder-leg-name" class="label mt-4">Name</label>
+            <input id="wayfinder-leg-name" class="field" maxlength="80" required autocomplete="off">
+            <label for="wayfinder-leg-description" class="label mt-4">Description (optional)</label>
+            <input id="wayfinder-leg-description" class="field" maxlength="80" autocomplete="off">
+            <p id="wayfinder-leg-error" class="mt-2 text-sm text-red-700" role="alert" hidden></p>
+            <div class="mt-5 flex gap-2">
+              <button class="btn-primary" type="submit">Save leg</button>
+              <button id="wayfinder-leg-cancel" class="btn-secondary" type="button">Cancel</button>
+            </div>
+          </form>
+        </dialog>
 
         <dialog id="wayfinder-name-dialog" aria-labelledby="wayfinder-name-title" class="w-[min(90vw,28rem)] rounded-xl bg-white p-6 text-stone-900 shadow-xl">
           <form id="wayfinder-name-form">
@@ -312,6 +367,7 @@
             <label for="wayfinder-name" class="label mt-4">Name</label>
             <input id="wayfinder-name" class="field" maxlength="80" required autocomplete="off">
             <p class="mt-2 text-xs text-stone-500">Up to 80 characters; Latin letters, numbers and punctuation.</p>
+            <label class="wayfinder-blank-option mt-4"><input id="wayfinder-hide-blank" type="checkbox" checked> Hide on Blank Map</label>
             <div id="wayfinder-marker-details" hidden>
               <label for="wayfinder-description" class="label mt-4">Description (optional)</label>
               <input id="wayfinder-description" class="field" maxlength="80" autocomplete="off">
@@ -341,7 +397,7 @@
           <h2 id="print-choice-title" class="text-lg font-semibold">Choose a PDF map</h2>
           <p class="mt-2 text-sm text-stone-600">Choose the imagery to print. The map blend slider only changes the on-screen view.</p>
           <p class="mt-2 text-sm text-stone-600">PDFs print at 1:50 000 on the selected paper at actual size. A 1:250 000 topographic source is enlarged and retains its original coarser detail. Aerial imagery dates and detail vary. Downloads are free.</p>
-          <p class="mt-2 text-sm text-stone-600">Each PDF uses one map generation, even if canceled or unsuccessful.</p>
+          <p id="print-quota-note" class="mt-2 text-sm text-stone-600">Each PDF uses one map generation, even if canceled or unsuccessful.</p>
           <form method="dialog" class="mt-5 flex flex-wrap gap-2">
             <button class="btn-primary" value="topographic">Topographic PDF</button>
             <button class="btn-secondary" value="satellite">Aerial PDF</button>

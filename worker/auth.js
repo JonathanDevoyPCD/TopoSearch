@@ -1,3 +1,5 @@
+import { validateWayfinderData } from "../wayfinder-data.js";
+
 const encoder = new TextEncoder();
 const PBKDF2_ITERATIONS = 100000;
 const SESSION_SECONDS = 60 * 60 * 24 * 30;
@@ -129,7 +131,10 @@ function quotaLimit(env) {
 }
 
 async function quotaFor(env, userId) {
-  const row = await env.DB.prepare("SELECT COUNT(*) AS used FROM generations WHERE user_id = ?1 AND created_at >= ?2")
+  const row = await env.DB.prepare(
+    `SELECT (SELECT COUNT(*) FROM generations WHERE user_id = ?1 AND created_at >= ?2) +
+            (SELECT COUNT(*) FROM leg_generation_pairs WHERE user_id = ?1 AND created_at >= ?2) AS used`
+  )
     .bind(userId, monthStart())
     .first();
   const limit = quotaLimit(env);
@@ -306,14 +311,58 @@ const routes = {
 
   async "POST /pdf/start"(request, env) {
     const user = await sessionFor(request, env);
-    const result = await env.DB.prepare(
-      `INSERT INTO generations (user_id, created_at)
-       SELECT ?1, ?2 WHERE (SELECT COUNT(*) FROM generations WHERE user_id = ?1 AND created_at >= ?3) < ?4`
-    )
-      .bind(user.id, new Date().toISOString(), monthStart(), quotaLimit(env))
-      .run();
+    const body = request.body ? await readJson(request) : {};
+    let result;
+    let pairExists = false;
+    if (body.legPair !== undefined) {
+      const pair = body.legPair;
+      if (!pair || typeof pair !== "object" || typeof pair.legId !== "string" ||
+          typeof pair.lockId !== "string" || !["50k", "250k"].includes(pair.layer) ||
+          !["online", "offline"].includes(pair.source) ||
+          !["topographic", "satellite"].includes(pair.imagery)) {
+        throw new HttpError(400, "Invalid leg map settings.");
+      }
+      const row = await env.DB.prepare("SELECT markings FROM wayfinder WHERE user_id = ?1").bind(user.id).first();
+      let data;
+      try {
+        data = JSON.parse(row?.markings);
+      } catch {
+        throw new HttpError(400, "Save and lock this leg before downloading.");
+      }
+      if (!validateWayfinderData(data) || Array.isArray(data)) {
+        throw new HttpError(400, "Save and lock this leg before downloading.");
+      }
+      const leg = data.legs.find((entry) => entry.id === pair.legId);
+      if (!leg?.frame || leg.frame.id !== pair.lockId) {
+        throw new HttpError(409, "The saved leg frame has changed. Reload or save the locked frame before downloading.");
+      }
+      const frame = leg.frame;
+      const keys = [user.id, leg.id, frame.id, frame.lat, frame.lng, frame.paperSize,
+        pair.layer, pair.source, pair.imagery];
+      result = await env.DB.prepare(
+        `INSERT INTO leg_generation_pairs
+         (user_id, leg_id, lock_id, frame_lat, frame_lng, paper_size, layer, source, imagery, created_at)
+         SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10
+         WHERE (SELECT COUNT(*) FROM generations WHERE user_id = ?1 AND created_at >= ?11) +
+               (SELECT COUNT(*) FROM leg_generation_pairs WHERE user_id = ?1 AND created_at >= ?11) < ?12
+         ON CONFLICT DO NOTHING`
+      ).bind(...keys, new Date().toISOString(), monthStart(), quotaLimit(env)).run();
+      if (!result.meta.changes) {
+        const existing = await env.DB.prepare(
+          `SELECT 1 AS found FROM leg_generation_pairs WHERE user_id = ?1 AND leg_id = ?2 AND lock_id = ?3
+           AND frame_lat = ?4 AND frame_lng = ?5 AND paper_size = ?6 AND layer = ?7 AND source = ?8 AND imagery = ?9`
+        ).bind(...keys).first();
+        pairExists = Boolean(existing);
+      }
+    } else {
+      result = await env.DB.prepare(
+        `INSERT INTO generations (user_id, created_at)
+         SELECT ?1, ?2 WHERE (SELECT COUNT(*) FROM generations WHERE user_id = ?1 AND created_at >= ?3) +
+           (SELECT COUNT(*) FROM leg_generation_pairs WHERE user_id = ?1 AND created_at >= ?3) < ?4`
+      ).bind(user.id, new Date().toISOString(), monthStart(), quotaLimit(env)).run();
+    }
     const quota = await quotaFor(env, user.id);
-    if (!result.meta.changes) {
+    if (!result.meta.changes && !pairExists) {
       throw new HttpError(403, "You have used all of your map generations for this month.", { quota });
     }
     return {

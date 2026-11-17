@@ -38,6 +38,7 @@ const selectedSheetElement = document.querySelector("#selected-sheet");
 const selectedSheetNameElement = document.querySelector("#selected-sheet-name");
 const printButton = document.querySelector("#print-map");
 const cancelPrintButton = document.querySelector("#cancel-print");
+const legCancelPrintButton = document.querySelector("#wayfinder-cancel-print");
 const raceMapButton = document.querySelector("#race-map");
 const raceMapButtonLabel = document.querySelector("#race-map-label");
 const raceMapButtonSize = document.querySelector("#race-map-size");
@@ -45,6 +46,23 @@ const raceWorldLink = document.querySelector("#race-map-world");
 const clearFrameButton = document.querySelector("#clear-frame");
 const blendSlider = document.querySelector("#map-blend");
 const printChoice = document.querySelector("#print-choice");
+const sidebarToggle = document.querySelector("#sidebar-toggle");
+const sidebarTools = document.querySelector("#sidebar-tools");
+
+sidebarToggle.addEventListener("click", () => {
+  sidebarTools.hidden = !sidebarTools.hidden;
+  sidebarToggle.setAttribute("aria-expanded", String(!sidebarTools.hidden));
+  sidebarToggle.textContent = sidebarTools.hidden ? "Show tools" : "Hide tools";
+});
+document.querySelectorAll("#sidebar-tools > details").forEach((section) => {
+  section.addEventListener("toggle", () => {
+    if (section.open) {
+      document.querySelectorAll("#sidebar-tools > details").forEach((other) => {
+        if (other !== section) other.open = false;
+      });
+    }
+  });
+});
 
 const map = L.map("map", {
   center: INITIAL_CENTER,
@@ -94,6 +112,8 @@ let printToken = null;
 let fullMapsBase = "";
 let freeFrame = null;
 let frameCenter = null;
+let frameLocked = false;
+let lockedFrameUsable = true;
 let frameRect = null;
 let frameHandle = null;
 let paperRect = null;
@@ -101,6 +121,47 @@ let paperMask = null;
 let printLabel = null;
 let suppressFrameClick = false;
 let suppressFrameClickTimer = null;
+let pendingLegPrint = null;
+
+document.addEventListener("toposearch:leg-view", (event) => {
+  const frame = event.detail.leg?.frame;
+  frameLocked = Boolean(frame);
+  lockedFrameUsable = true;
+  paperSelect.disabled = frameLocked;
+  clearFrameButton.disabled = frameLocked;
+  map.getContainer().classList.toggle("frame-locked", frameLocked);
+  if (frame) {
+    const clamped = clampFrameCenter({ lat: frame.lat, lng: frame.lng }, frame.paperSize, downloadArea());
+    if (Math.abs(clamped.lat - frame.lat) > 1e-8 || Math.abs(clamped.lng - frame.lng) > 1e-8) {
+      lockedFrameUsable = false;
+      freeFrame = null;
+      frameCenter = null;
+      selectedSheet = null;
+      renderFrame();
+      renderSheetLayer();
+      updateSelectedSheetDetails();
+      setStatus("The locked frame is outside the downloadable area. Unlock it to select a new frame.", "error");
+      return;
+    }
+    paperSelect.value = frame.paperSize;
+    setFrameCenter(L.latLng(frame.lat, frame.lng), { allowLocked: true });
+  }
+  renderFrame();
+  updateSelectedSheetDetails();
+});
+
+document.querySelector("#wayfinder-frame-toggle").addEventListener("click", () => {
+  const leg = wayfinder.selectedLeg();
+  if (!leg) return;
+  if (leg.frame) {
+    if (!window.confirm("Unlock this leg's map selection? Moving it changes both the Master and Blank maps and requires a new generation.")) return;
+    wayfinder.setFrame(null);
+  } else if (!frameCenter || !freeFrame) {
+    setStatus("Place a frame before locking the leg map.", "error");
+  } else {
+    wayfinder.setFrame({ id: crypto.randomUUID(), lat: frameCenter.lat, lng: frameCenter.lng, paperSize: paperSelect.value });
+  }
+});
 
 function activeTarget() {
   return freeFrame;
@@ -109,6 +170,9 @@ function activeTarget() {
 function setStatus(message, state = "info") {
   statusElement.textContent = message;
   statusElement.dataset.state = state;
+  const legStatus = document.querySelector("#wayfinder-print-status");
+  legStatus.textContent = message;
+  legStatus.dataset.state = state;
 }
 
 function tileUrl(layerName) {
@@ -205,6 +269,8 @@ function updateRaceMapButton() {
 
 function updateSelectedSheetDetails() {
   const target = activeTarget();
+  const legSelected = Boolean(wayfinder.selectedLeg());
+  document.querySelector("#generic-print-hint").hidden = !legSelected;
   updateRaceMapButton();
   if (!target) {
     selectedSheetElement.textContent = "No frame";
@@ -224,8 +290,10 @@ function updateSelectedSheetDetails() {
   const pdfAvailable = isPdfAvailable(target);
   const outOfQuota = quotaRemaining() === 0;
   printButton.disabled =
-    Boolean(printController) || (IS_GITHUB_PAGES && !PDF_WORKER_BASE_URL) || !pdfAvailable || outOfQuota;
-  printButton.title = !pdfAvailable
+    Boolean(printController) || legSelected || (IS_GITHUB_PAGES && !PDF_WORKER_BASE_URL) || !pdfAvailable || outOfQuota;
+  printButton.title = legSelected
+    ? "Use the Master or Blank download in the selected leg."
+    : !pdfAvailable
     ? "PDF export is not yet available for this area."
     : outOfQuota
       ? "You have used all of your map generations for this month."
@@ -288,7 +356,8 @@ function leafletBounds({ west, east, south, north }) {
   return L.latLngBounds([south, west], [north, east]);
 }
 
-function setFrameCenter(center, { moveHandle = true } = {}) {
+function setFrameCenter(center, { moveHandle = true, allowLocked = false } = {}) {
+  if (frameLocked && !allowLocked) return;
   frameCenter = L.latLng(clampFrameCenter(center, paperSelect.value, downloadArea()));
   const geometry = frameGeometry(frameCenter, paperSelect.value);
   freeFrame = frameFeature(frameCenter, paperSelect.value);
@@ -303,12 +372,13 @@ function setFrameCenter(center, { moveHandle = true } = {}) {
   renderSheetLayer();
   updateSelectedSheetDetails();
   setStatus(
-    `Free frame centred at ${Math.abs(frameCenter.lat).toFixed(4)}° S, ${frameCenter.lng.toFixed(4)}° E. Drag it to adjust.`
+    `Free frame centred at ${Math.abs(frameCenter.lat).toFixed(4)}° S, ${frameCenter.lng.toFixed(4)}° E.${frameLocked ? " Locked for this leg." : " Drag it to adjust."}`
   );
 }
 
 function startFrameDrag(event) {
   L.DomEvent.stopPropagation(event);
+  if (frameLocked) return;
   map.dragging.disable();
   const offsetLat = event.latlng.lat - frameCenter.lat;
   const offsetLng = event.latlng.lng - frameCenter.lng;
@@ -363,7 +433,8 @@ function renderFrame() {
     dashArray: "6 5",
     fill: false,
     bubblingMouseEvents: false,
-    className: "free-frame"
+    className: "free-frame",
+    interactive: !frameLocked
   }).addTo(map);
   paperRect.on("mousedown", startFrameDrag);
   frameRect = L.rectangle(leafletBounds(geometry.map), {
@@ -373,7 +444,8 @@ function renderFrame() {
     fillColor: "#f0b27e",
     fillOpacity: 0.08,
     bubblingMouseEvents: false,
-    className: "free-frame"
+    className: "free-frame",
+    interactive: !frameLocked
   }).addTo(map);
   frameRect.on("mousedown", startFrameDrag);
   printLabel = L.marker([geometry.map.north, geometry.map.west], {
@@ -383,9 +455,9 @@ function renderFrame() {
     icon: L.divIcon({ className: "print-area-watermark", html: "PRINTED MAP", iconSize: [100, 22], iconAnchor: [-6, -6] })
   }).addTo(map);
   frameHandle = L.marker(frameCenter, {
-    draggable: true,
+    draggable: !frameLocked,
     keyboard: false,
-    title: "Drag to move the frame",
+    title: frameLocked ? "Frame locked for this leg" : "Drag to move the frame",
     icon: L.divIcon({ className: "frame-handle", html: "✥", iconSize: [34, 34], iconAnchor: [17, 17] })
   }).addTo(map);
   frameHandle.on("drag", () => setFrameCenter(frameHandle.getLatLng(), { moveHandle: false }));
@@ -393,6 +465,7 @@ function renderFrame() {
 }
 
 function placeFrame(latlng) {
+  if (frameLocked) return;
   const area = downloadArea();
   if (latlng.lat < area.south || latlng.lat > area.north || latlng.lng < area.west || latlng.lng > area.east) {
     setStatus("Free frames can only be placed inside the dashed downloadable area.", "error");
@@ -406,6 +479,7 @@ function placeFrame(latlng) {
 }
 
 clearFrameButton.addEventListener("click", () => {
+  if (frameLocked) return;
   freeFrame = null;
   frameCenter = null;
   selectedSheet = null;
@@ -1267,12 +1341,28 @@ async function createPrintPdf(feature, layerName, tileSource, signal, imagery, p
   return { pdf: assemblePdf(jpeg, imageWidth, imageHeight, pageWidth, pageHeight, content), missingTiles };
 }
 
-printButton.addEventListener("click", () => {
+function openPrintChoice(variant = null) {
+  const leg = wayfinder.selectedLeg();
+  if (!variant && leg) {
+    setStatus("Use the Master or Blank download in the selected leg.", "error");
+    return;
+  }
+  if (variant && (!leg?.frame || !lockedFrameUsable || !activeTarget())) {
+    setStatus("Lock a valid map selection for this leg before downloading.", "error");
+    return;
+  }
   if (!printController && activeTarget()) {
+    pendingLegPrint = variant ? { legId: leg.id, lockId: leg.frame.id, variant } : null;
+    document.querySelector("#print-quota-note").textContent = pendingLegPrint
+      ? "The first download uses one generation, even if canceled or unsuccessful. Matching Master and Blank downloads are free while the frame and imagery settings stay unchanged."
+      : "Each PDF uses one map generation, even if canceled or unsuccessful.";
     printChoice.returnValue = "";
     printChoice.showModal();
   }
-});
+}
+printButton.addEventListener("click", () => openPrintChoice());
+document.querySelector("#wayfinder-download-master").addEventListener("click", () => openPrintChoice("master"));
+document.querySelector("#wayfinder-download-blank").addEventListener("click", () => openPrintChoice("blank"));
 
 printChoice.querySelector("form").addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -1282,21 +1372,45 @@ printChoice.querySelector("form").addEventListener("submit", async (event) => {
     return;
   }
   const feature = activeTarget();
+  const legPrint = pendingLegPrint;
+  pendingLegPrint = null;
   if (printController || !feature) {
     return;
   }
   printController = new AbortController();
   printButton.disabled = true;
   cancelPrintButton.hidden = false;
+  legCancelPrintButton.hidden = !legPrint;
   const fileSheet = feature.properties.custom
     ? `FreeFrame_${Math.abs(frameCenter.lat).toFixed(3)}S_${frameCenter.lng.toFixed(3)}E`
     : feature.properties.s;
   const fileLayer = layerSelect.value;
   const tileSource = sourceSelect.value;
   const paperSize = paperSelect.value;
-  const markings = wayfinder.snapshot();
   try {
-    printToken = await startGeneration();
+    let markings;
+    let legPair;
+    let legFileName = "";
+    if (legPrint) {
+      const leg = wayfinder.selectedLeg();
+      if (!leg?.frame || leg.id !== legPrint.legId || leg.frame.id !== legPrint.lockId || !lockedFrameUsable) {
+        throw new Error("The leg or its locked frame changed. Select it again before downloading.");
+      }
+      markings = wayfinder.legSnapshot(leg.id, legPrint.variant === "blank");
+      legFileName = leg.name.trim().replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").slice(0, 40) || "Leg";
+      await wayfinder.ensureSaved();
+      if (printController.signal.aborted) {
+        throw new DOMException("PDF generation canceled.", "AbortError");
+      }
+      const current = wayfinder.selectedLeg();
+      if (!current?.frame || current.id !== legPrint.legId || current.frame.id !== legPrint.lockId) {
+        throw new Error("The leg or its locked frame changed while saving. Select it again before downloading.");
+      }
+      legPair = { legId: leg.id, lockId: leg.frame.id, layer: fileLayer, source: tileSource, imagery };
+    } else {
+      markings = wayfinder.snapshot();
+    }
+    printToken = await startGeneration(legPair);
     const { pdf, missingTiles } = await createPrintPdf(feature, fileLayer, tileSource, printController.signal, imagery, paperSize, markings);
     if (printController.signal.aborted) {
       return;
@@ -1304,7 +1418,7 @@ printChoice.querySelector("form").addEventListener("submit", async (event) => {
     const url = URL.createObjectURL(pdf);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = `TopoSearch_${fileSheet}_${paperSize}_1-50000_${fileLayer}${imagery === "satellite" ? "_Aerial" : ""}_${new Date().toISOString().slice(0, 10)}.pdf`;
+    anchor.download = `TopoSearch_${fileSheet}_${paperSize}_1-50000_${fileLayer}${imagery === "satellite" ? "_Aerial" : ""}${legPrint ? `_${legFileName}_${legPrint.variant}` : ""}_${new Date().toISOString().slice(0, 10)}.pdf`;
     anchor.click();
     setTimeout(() => URL.revokeObjectURL(url), 60000);
     const missingNote = missingTiles ? ` ${missingTiles} tiles have no aerial imagery and are shown in grey.` : "";
@@ -1319,16 +1433,19 @@ printChoice.querySelector("form").addEventListener("submit", async (event) => {
     printController = null;
     printToken = null;
     cancelPrintButton.hidden = true;
+    legCancelPrintButton.hidden = true;
     updateSelectedSheetDetails();
   }
 });
 
-cancelPrintButton.addEventListener("click", () => {
+function cancelPrint() {
   if (printController) {
     printController.abort();
     setStatus("Canceling PDF generation…");
   }
-});
+}
+cancelPrintButton.addEventListener("click", cancelPrint);
+legCancelPrintButton.addEventListener("click", cancelPrint);
 
 replaceTileLayer();
 loadSheetIndex();

@@ -5,6 +5,7 @@
 }
 
 #print-choice::backdrop,
+#wayfinder-leg-dialog::backdrop,
 #wayfinder-name-dialog::backdrop {
   background: rgba(28, 25, 23, 0.55);
 }
@@ -79,52 +80,50 @@
   cursor: move;
 }
 
-.wayfinder {
-  position: absolute;
-  z-index: 800;
-  top: 12px;
-  right: 12px;
-  width: min(320px, calc(100% - 24px));
-  color: #292524;
-}
-
-.wayfinder-toggle,
-.wayfinder-panel {
+.sidebar-blend {
+  position: sticky;
+  top: -1rem;
+  z-index: 1;
+  padding: 1rem 0 8px;
+  margin-top: -1rem;
   background: white;
-  border: 1px solid #d6d3d1;
-  border-radius: 12px;
-  box-shadow: 0 4px 18px rgba(28, 25, 23, 0.18);
 }
 
-.wayfinder-toggle {
-  display: block;
-  margin-left: auto;
-  padding: 9px 14px;
+.sidebar-toggle {
+  margin-top: 4px;
   color: #047857;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.sidebar-section {
+  border-top: 1px solid #e7e5e4;
+  margin-top: 12px;
+}
+
+.sidebar-section summary {
+  cursor: pointer;
+  padding: 12px 0 0;
+  color: #065f46;
   font-size: 14px;
   font-weight: 700;
 }
 
-.wayfinder-panel {
-  margin-top: 6px;
-  padding: 14px;
-  max-height: min(65vh, 500px);
-  overflow-y: auto;
+.sidebar-content {
+  display: grid;
+  gap: 10px;
+  padding-top: 10px;
 }
 
-.wayfinder-heading {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
+.sidebar-content > div[class*="sm:w-"] {
+  width: 100%;
 }
 
-.wayfinder-heading h2,
-.wayfinder-panel h3 {
+.sidebar-content h3 {
   font-size: 14px;
   font-weight: 700;
 }
 
-.wayfinder-heading p,
 .wayfinder-hint,
 .wayfinder-save-status,
 .wayfinder-footnote {
@@ -134,20 +133,20 @@
   color: #57534e;
 }
 
-.wayfinder-heading button {
-  align-self: flex-start;
-  font-size: 22px;
-  line-height: 1;
-}
-
-.wayfinder-tools {
+.wayfinder-tools,
+.wayfinder-home-actions,
+.wayfinder-leg-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 5px;
-  margin-top: 12px;
 }
 
 .wayfinder-tools button,
+.wayfinder-home-actions button,
+.wayfinder-leg-list button,
+.wayfinder-leg-map-controls button,
+#wayfinder-add-leg,
+.wayfinder-leg-actions button,
 .wayfinder-list button,
 .wayfinder-retry {
   border: 1px solid #d6d3d1;
@@ -155,6 +154,42 @@
   padding: 5px 8px;
   font-size: 12px;
   font-weight: 600;
+}
+
+.wayfinder-home-actions,
+.wayfinder-leg-list,
+.wayfinder-leg-map-controls {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.wayfinder-leg-list button {
+  width: 100%;
+  text-align: left;
+}
+
+.wayfinder-back {
+  text-align: left;
+  color: #047857;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.wayfinder-blank-option {
+  display: block;
+  font-size: 12px;
+}
+
+.wayfinder-markings summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+#map.frame-locked .free-frame,
+#map.frame-locked .frame-handle {
+  cursor: default;
 }
 
 .wayfinder-tools button[aria-pressed="true"] {
@@ -179,6 +214,10 @@
 }
 
 .wayfinder-save-status[data-error="true"] {
+  color: #b91c1c;
+}
+
+#wayfinder-print-status[data-state="error"] {
   color: #b91c1c;
 }
 
@@ -208,6 +247,14 @@
   font-size: 12px;
 }
 
+.wayfinder-list label {
+  font-size: 12px;
+}
+
+.wayfinder-list select {
+  width: 100%;
+}
+
 .wayfinder-label {
   color: #111;
   font-family: Arial, sans-serif;
@@ -219,7 +266,7 @@
 
 .wayfinder-marker-label {
   display: inline-block;
-  line-height: 1.2;
+  line-height: 1.0;
   transform: translate(var(--wayfinder-label-x, -50%), var(--wayfinder-label-y, 0%));
   -webkit-text-stroke: 3px white;
   paint-order: stroke fill;
@@ -241,16 +288,6 @@
   touch-action: none;
 }
 
-@media (max-width: 560px) {
-  .wayfinder {
-    width: min(240px, calc(100% - 24px));
-  }
-
-  .wayfinder-panel {
-    max-height: min(45vh, 260px);
-  }
-}
-
 /* New Styling */
 section.rounded-xl.bg-white.p-4.shadow-sm.ring-1.ring-stone-200 {
     position: absolute;
@@ -258,8 +295,9 @@ section.rounded-xl.bg-white.p-4.shadow-sm.ring-1.ring-stone-200 {
     left: 10px;
     top: 90px;
     height: fit-content;
-    max-height: 100vh;
-    width: 300px;
+    max-height: calc(100vh - 100px);
+    width: min(300px, calc(100vw - 20px));
+    overflow-y: auto;
 }
 
 header {

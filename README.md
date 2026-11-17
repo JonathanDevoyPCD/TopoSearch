@@ -73,11 +73,40 @@ For an existing deployment, apply the updated schema before deploying the Worker
 `npm run worker:deploy`. The schema uses `CREATE TABLE IF NOT EXISTS` and does
 not replace existing account data.
 
+The `leg_generation_pairs` table is required by the updated Worker and must
+be created before deployment. Monthly usage includes both `generations` and
+`leg_generation_pairs`; an administrative usage reset must account for both.
+
+Deploy the updated Worker before publishing the leg-enabled viewer. Older
+Workers reject the new WayFinder format, and older viewers cannot open data
+saved in that format; refresh other open tabs after updating.
+
 The interface is styled with Tailwind CSS loaded from its CDN (`index.html`).
 
 ## Tools
 
-**WayFinder** opens from the map's top-right corner. Choose CP, TA, Start,
+The sidebar keeps **Map blend** at the top and groups map settings, WayFinder,
+and print controls in expandable sections.
+Use **Hide tools** to free up space on the map while keeping the blend slider visible.
+
+**WayFinder** is in the sidebar. Add a leg and give it a name and optional
+description, then open its screen to add markings. Use **Back to WayFinder**
+to choose another leg or the global Master and Blank maps. Each marking can be
+assigned to one leg or left unassigned using the markings list. Existing
+markings remain unassigned on the Master Map. The Master Map shows all
+markings; each leg shows only its own. New markings default to **Hide on Blank
+Map**; uncheck it while creating or editing a marking to include it. Highlights
+have the same option. The global Blank Map contains included markings from all
+legs and unassigned markings.
+Deleting a leg leaves its markings unassigned on the Master Map.
+
+In a leg screen, position the frame and choose the paper size, then lock the
+selection. A leg remembers its own locked frame across devices. The frame and
+paper size cannot be changed until the user confirms unlocking. The leg's
+Master PDF contains that leg's markings; its Blank PDF contains only markings
+not hidden on the Blank Map. Both are generated with the locked frame.
+
+Choose CP, TA, Start,
 Finish or Label, click the map and name the marking. CP and TA names are
 suggested in sequence; each can also have an optional description and a
 custom marker colour. Choose one of eight label positions around the circle;
@@ -94,9 +123,10 @@ Saving is not live-synchronized: if another device changes the markings,
 WayFinder warns about the conflict rather than silently overwriting them.
 Unsaved work can be kept on screen, or explicitly used to replace the saved
 version. The local no-sign-in preview keeps markings only until the page closes
-or refreshes. The limit is 500 markings and 10,000 highlight points.
+or refreshes. The limit is 100 legs, 500 markings and 10,000 highlight points.
 
-Topographic and aerial PDFs include WayFinder points whose centres are within
+Topographic and aerial PDFs use the selected Master, Blank, or leg map. They
+include its WayFinder points whose centres are within
 the **PRINTED MAP** outline, and clip highlight strokes at that outline.
 Markings are not added to original race-map TIF files.
 
@@ -116,7 +146,13 @@ Aerial PDFs carry the imagery attribution
 and do not claim that topographic symbols appear on the image. Areas where the
 aerial service returns no imagery are shown in grey and identified in the PDF;
 an export fails if the entire selected area has no imagery.
-Each PDF generation uses the existing monthly quota, even if canceled or failed.
+The first leg PDF for a locked frame, paper size, map layer, tile source and
+imagery type uses one generation even if canceled or failed. Repeated Master
+and Blank downloads with those same settings are free while the frame remains
+locked, including when the monthly quota is exhausted. Unlocking and locking
+again, or choosing a different layer, source or imagery, starts a new paid pair.
+Returning to a previously paid combination remains free until the frame is unlocked.
+General (non-leg) PDF downloads each use one generation.
 
 **Free Frame** is the map selection tool. Select A0, A1, A2, A3, or A4 portrait
 paper, then click or drag the frame to position it. The outer dashed outline

@@ -187,12 +187,12 @@ export async function wayfinderRequest(method = "GET", body) {
   return api("/wayfinder", { method, body, auth: token });
 }
 
-export async function startGeneration() {
+export async function startGeneration(legPair) {
   if (!authEnabled) {
     return null;
   }
   try {
-    const result = await api("/pdf/start", { method: "POST", auth: token });
+    const result = await api("/pdf/start", { method: "POST", body: legPair ? { legPair } : undefined, auth: token });
     quota = result.quota;
     renderQuota();
     return result.printToken;

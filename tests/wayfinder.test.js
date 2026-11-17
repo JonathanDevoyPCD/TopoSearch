@@ -1,10 +1,74 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { validateWayfinderMarkings, wayfinderMarkerColor } from "../wayfinder-data.js";
+import { legWayfinderMarkings, validateWayfinderData, validateWayfinderMarkings, visibleWayfinderMarkings, wayfinderMarkerColor } from "../wayfinder-data.js";
 import { pdfEscape, projectWayfinderPoint, wayfinderPdfCommands } from "../wayfinder-print.js";
 import { mercatorY } from "../print-layout.js";
 
 const measureText = (value, size) => value.length * size / 2;
+
+test("validates leg data and preserves legacy markings", () => {
+  const point = { id: "one", type: "cp", name: "CP1", lat: -34, lng: 25 };
+  const leg = { id: "leg-one", name: "LEG 1", description: "Bike" };
+  const data = { version: 1, legs: [leg], markings: [{ ...point, legId: leg.id, showOnBlank: true }] };
+  assert.equal(validateWayfinderData([point]), true);
+  assert.equal(validateWayfinderData(data), true);
+  assert.equal(validateWayfinderData({ ...data, legs: [] }), false);
+  assert.equal(validateWayfinderData({ ...data, legs: [leg, leg] }), false);
+  assert.equal(validateWayfinderData({ ...data, legs: [{ ...leg, description: "漢字" }] }), false);
+  assert.equal(validateWayfinderData({ ...data, markings: [{ ...point, showOnBlank: "yes" }] }), false);
+  assert.equal(validateWayfinderData({ ...data, version: 2 }), false);
+  const frame = { id: "lock-one", lat: -34, lng: 25, paperSize: "A3" };
+  assert.equal(validateWayfinderData({ ...data, legs: [{ ...leg, frame }] }), true);
+  assert.equal(validateWayfinderData({ ...data, legs: [{ ...leg, frame: { ...frame, paperSize: "A8" } }] }), false);
+  assert.equal(validateWayfinderData({ ...data, legs: [{ ...leg, frame: { ...frame, lat: 100 } }] }), false);
+});
+
+test("leg master and blank PDFs contain only that leg's selected markers", () => {
+  const bounds = { west: 24, east: 26, north: -33, south: -35 };
+  const layout = { pageHeight: 297, mapX: 10, mapY: 20, mapWidth: 100, mapHeight: 200 };
+  const markings = [
+    { id: "a", type: "cp", name: "CP1", lat: -34, lng: 25, legId: "one", showOnBlank: true },
+    { id: "b", type: "ta", name: "TA1", lat: -34, lng: 25, legId: "one" },
+    { id: "c", type: "cp", name: "CP2", lat: -34, lng: 25, legId: "two", showOnBlank: true }
+  ];
+  const render = (blank) => wayfinderPdfCommands(legWayfinderMarkings({ markings }, "one", blank), bounds, layout, measureText);
+  assert.match(render(false), /\(CP1\) Tj/);
+  assert.match(render(false), /\(TA1\) Tj/);
+  assert.doesNotMatch(render(false), /\(CP2\) Tj/);
+  assert.match(render(true), /\(CP1\) Tj/);
+  assert.doesNotMatch(render(true), /\(TA1\) Tj/);
+  assert.doesNotMatch(render(true), /\(CP2\) Tj/);
+});
+
+test("master, blank and leg views select the same markings for map and PDF", () => {
+  const markings = [
+    { id: "a", legId: "leg-one", showOnBlank: true },
+    { id: "b", legId: "leg-two" },
+    { id: "c", showOnBlank: true },
+    { id: "d" }
+  ];
+  assert.deepEqual(visibleWayfinderMarkings({ markings }, "master"), markings);
+  assert.deepEqual(visibleWayfinderMarkings({ markings }, "blank").map((marking) => marking.id), ["a", "c"]);
+  assert.deepEqual(visibleWayfinderMarkings({ markings }, "leg-one").map((marking) => marking.id), ["a"]);
+  assert.deepEqual(visibleWayfinderMarkings({ markings }, "leg-two").map((marking) => marking.id), ["b"]);
+  assert.deepEqual(visibleWayfinderMarkings({ markings }, "missing"), []);
+});
+
+test("PDF output contains only markings selected for the map", () => {
+  const bounds = { west: 24, east: 26, north: -33, south: -35 };
+  const layout = { pageHeight: 297, mapX: 10, mapY: 20, mapWidth: 100, mapHeight: 200 };
+  const markings = [
+    { id: "a", type: "cp", name: "CP1", lat: -34, lng: 25, legId: "leg-one" },
+    { id: "b", type: "ta", name: "TA1", lat: -34, lng: 25, legId: "leg-two", showOnBlank: true }
+  ];
+  const render = (view) => wayfinderPdfCommands(visibleWayfinderMarkings({ markings }, view), bounds, layout, measureText);
+  assert.match(render("master"), /\(CP1\) Tj/);
+  assert.match(render("master"), /\(TA1\) Tj/);
+  assert.match(render("leg-one"), /\(CP1\) Tj/);
+  assert.doesNotMatch(render("leg-one"), /\(TA1\) Tj/);
+  assert.match(render("blank"), /\(TA1\) Tj/);
+  assert.doesNotMatch(render("blank"), /\(CP1\) Tj/);
+});
 
 test("validates marking types, coordinates, names and unique IDs", () => {
   const point = { id: "one", type: "cp", name: "CP1", lat: -34, lng: 25 };

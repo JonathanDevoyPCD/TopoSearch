@@ -193,19 +193,42 @@ test("WayFinder saves per account and monthly generation quotas are enforced", a
   assert.equal((await call(0, "POST", { revision: 1, markings: [{ ...point, lat: 95 }] })).status, 400);
   assert.equal((await call(0, "POST", { revision: 1, markings: [{ ...point, color: "red" }] })).status, 400);
   assert.equal((await call(0, "POST", { revision: 1, markings: [{ ...point, labelPosition: "center" }] })).status, 400);
-  assert.equal((await call(0, "POST", { revision: 1, markings: [] })).status, 200);
-  assert.deepEqual(await (await call(0)).json(), { revision: 2, markings: [] });
+  const race = { version: 1, legs: [{ id: "leg-one", name: "LEG 1", description: "Bike",
+    frame: { id: "lock-one", lat: -34, lng: 25, paperSize: "A3" } }],
+    markings: [{ ...point, legId: "leg-one", showOnBlank: true }] };
+  assert.equal((await call(0, "POST", { revision: 1, markings: { ...race, legs: [] } })).status, 400);
+  assert.equal((await call(0, "POST", { revision: 1, markings: race })).status, 200);
+  assert.deepEqual(await (await call(0)).json(), { revision: 2, markings: race });
+  assert.equal((await call(0, "POST", { revision: 1, markings: [] })).status, 409);
+  assert.deepEqual(await (await call(1)).json(), { revision: 0, markings: [] });
   const anonymous = await worker.fetch(new Request("https://example.test/wayfinder", {
     headers: { Origin: origin }
   }), { ...env, DB: binding });
   assert.equal(anonymous.status, 401);
+
+  const pair = { legId: "leg-one", lockId: "lock-one", layer: "50k", source: "online", imagery: "topographic" };
+  const generatePair = (legPair, user = 0) => worker.fetch(new Request("https://example.test/pdf/start", {
+    method: "POST",
+    headers: { Origin: origin, Authorization: `Bearer ${tokens[user]}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ legPair })
+  }), { ...env, DB: binding });
+  assert.equal((await generatePair({ ...pair, lockId: "wrong" })).status, 409);
+  assert.equal((await generatePair(pair, 1)).status, 400);
+  const [firstPair, matchingPair] = await Promise.all([generatePair(pair), generatePair(pair)]);
+  assert.equal(firstPair.status, 200);
+  assert.equal((await firstPair.json()).quota.used, 1);
+  assert.equal(matchingPair.status, 200);
+  assert.equal((await matchingPair.json()).quota.used, 1);
+  const otherImagery = await generatePair({ ...pair, imagery: "satellite" });
+  assert.equal(otherImagery.status, 200);
+  assert.equal((await otherImagery.json()).quota.used, 2);
 
   for (const [user, quota] of [[0, undefined], [1, "10"]]) {
     const generate = () => worker.fetch(new Request("https://example.test/pdf/start", {
       method: "POST",
       headers: { Origin: origin, Authorization: `Bearer ${tokens[user]}` }
     }), { ...env, DB: binding, ...(quota === undefined ? {} : { MONTHLY_QUOTA: quota }) });
-    for (let used = 1; used <= 10; used++) {
+    for (let used = user === 0 ? 3 : 1; used <= 10; used++) {
       const response = await generate();
       assert.equal(response.status, 200);
       const data = await response.json();
@@ -217,4 +240,13 @@ test("WayFinder saves per account and monthly generation quotas are enforced", a
     assert.equal(denied.status, 403);
     assert.equal((await denied.json()).quota.remaining, 0);
   }
+  assert.equal((await generatePair(pair)).status, 200);
+  assert.equal((await generatePair({ ...pair, imagery: "satellite" })).status, 200);
+  assert.equal((await generatePair({ ...pair, source: "offline" })).status, 403);
+  const unlocked = { ...race, legs: race.legs.map(({ frame, ...leg }) => leg) };
+  assert.equal((await call(0, "POST", { revision: 2, markings: unlocked })).status, 200);
+  assert.equal((await generatePair(pair)).status, 409);
+  const relocked = { ...race, legs: race.legs.map((leg) => ({ ...leg, frame: { ...leg.frame, id: "lock-two" } })) };
+  assert.equal((await call(0, "POST", { revision: 3, markings: relocked })).status, 200);
+  assert.equal((await generatePair({ ...pair, lockId: "lock-two" })).status, 403);
 });
