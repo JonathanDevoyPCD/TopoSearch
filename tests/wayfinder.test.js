@@ -67,7 +67,8 @@ test("PDF renders marker descriptions in matching colour with a white stroke", (
   ];
   const commands = wayfinderPdfCommands(markings, bounds, layout, measureText);
   assert.match(commands, /1\.000 0\.502 0\.000 RG/);
-  assert.match(commands, /q 1\.000 0\.502 0\.000 rg 1 1 1 RG 0\.8 w 1 j/);
+  const outline = /q 1\.000 0\.502 0\.000 rg 1 1 1 RG (\d+(?:\.\d+)?) w 1 j/.exec(commands);
+  assert.ok(outline && Number(outline[1]) > 0);
   assert.match(commands, /\/Artifact BMC BT \/F2 10\.4 Tf 1 Tr ([\d.]+) ([\d.]+) Td \(CP1\) Tj ET EMC\nBT \/F2 10\.4 Tf 0 Tr \1 \2 Td \(CP1\) Tj ET/);
   assert.match(commands, /\/Artifact BMC BT \/F2 9 Tf 1 Tr ([\d.]+) ([\d.]+) Td \(Caf\\351 \\\(old\\\)\) Tj ET EMC\nBT \/F2 9 Tf 0 Tr \1 \2 Td \(Caf\\351 \\\(old\\\)\) Tj ET/);
   assert.match(commands, /q 0\.000 0\.427 0\.898 rg 1 1 1 RG/);

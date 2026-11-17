@@ -125,7 +125,7 @@ function nextMonthStart(now = new Date()) {
 
 function quotaLimit(env) {
   const limit = Number(env.MONTHLY_QUOTA);
-  return Number.isFinite(limit) && limit >= 0 ? limit : 5;
+  return Number.isFinite(limit) && limit >= 0 ? limit : 10;
 }
 
 async function quotaFor(env, userId) {

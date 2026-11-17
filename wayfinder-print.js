@@ -79,7 +79,7 @@ export function wayfinderPdfCommands(markings, bounds, layout, measureText) {
         commands.push(`/Artifact BMC BT /F2 ${size} Tf 1 Tr ${text} EMC`);
         commands.push(`BT /F2 ${size} Tf 0 Tr ${text}`);
       };
-      commands.push(`q ${rgb(wayfinderMarkerColor(marking))} rg 1 1 1 RG 0.8 w 1 j`);
+      commands.push(`q ${rgb(wayfinderMarkerColor(marking))} rg 1 1 1 RG 1 w 1 j`);
       markerText(marking.name, 10.4, nameWidth, nameY);
       if (marking.description) {
         markerText(marking.description, 9, descriptionWidth, nameY - mmToPt(4.1));

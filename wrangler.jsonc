@@ -27,7 +27,7 @@
   "vars": {
     "SITE_URL": "https://jonathandevoypcd.github.io/TopoSearch",
     "MAIL_FROM": "TopoSearch <onboarding@resend.dev>",
-    "MONTHLY_QUOTA": "5",
+    "MONTHLY_QUOTA": "10",
     "ALLOWED_ORIGIN": "https://jonathandevoypcd.github.io"
   }
 }

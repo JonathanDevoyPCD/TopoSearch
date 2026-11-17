@@ -49,7 +49,7 @@ Local PDF generation continues to use `node .\serve.js`.
 
 The site requires sign-in (name, email, password). Accounts live in a Cloudflare D1
 database (`worker/schema.sql`); passwords are salted PBKDF2 hashes. Each account gets
-`MONTHLY_QUOTA` map generations per calendar month (default 5, set in `wrangler.jsonc`);
+`MONTHLY_QUOTA` map generations per calendar month (default 10, set in `wrangler.jsonc`);
 quota is enforced by the Worker, not the browser. Race map (TIF) downloads are only
 hidden behind the sign-in screen: the GitHub release files themselves are public.
 

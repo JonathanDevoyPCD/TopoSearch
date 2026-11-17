@@ -140,7 +140,7 @@ test("auth routes validate input before touching the database", async () => {
   assert.equal((await post("/pdf/start", {})).status, 401);
 });
 
-test("WayFinder saves per account and rejects stale or invalid updates", async (t) => {
+test("WayFinder saves per account and monthly generation quotas are enforced", async (t) => {
   let DatabaseSync;
   try {
     ({ DatabaseSync } = await import("node:sqlite"));
@@ -199,4 +199,22 @@ test("WayFinder saves per account and rejects stale or invalid updates", async (
     headers: { Origin: origin }
   }), { ...env, DB: binding });
   assert.equal(anonymous.status, 401);
+
+  for (const [user, quota] of [[0, undefined], [1, "10"]]) {
+    const generate = () => worker.fetch(new Request("https://example.test/pdf/start", {
+      method: "POST",
+      headers: { Origin: origin, Authorization: `Bearer ${tokens[user]}` }
+    }), { ...env, DB: binding, ...(quota === undefined ? {} : { MONTHLY_QUOTA: quota }) });
+    for (let used = 1; used <= 10; used++) {
+      const response = await generate();
+      assert.equal(response.status, 200);
+      const data = await response.json();
+      assert.equal(data.quota.limit, 10);
+      assert.equal(data.quota.used, used);
+      assert.equal(data.quota.remaining, 10 - used);
+    }
+    const denied = await generate();
+    assert.equal(denied.status, 403);
+    assert.equal((await denied.json()).quota.remaining, 0);
+  }
 });
