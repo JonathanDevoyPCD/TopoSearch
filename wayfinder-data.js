@@ -4,6 +4,12 @@ export const WAYFINDER_COLORS = {
   cyan: "#22d3ee",
   green: "#4ade80"
 };
+export const WAYFINDER_MARKER_COLORS = {
+  cp: "#e5007d",
+  ta: "#006de5",
+  start: "#000000",
+  finish: "#000000"
+};
 export const WAYFINDER_POINT_TYPES = ["cp", "ta", "start", "finish", "label"];
 export const WAYFINDER_MAX_MARKINGS = 500;
 export const WAYFINDER_MAX_POINTS = 10000;
@@ -11,6 +17,14 @@ export const WAYFINDER_MAX_POINTS = 10000;
 export function validWayfinderName(value) {
   return typeof value === "string" && value.trim().length > 0 &&
     value.length <= 80 && /^[\x20-\x7e\xa0-\xff]+$/.test(value);
+}
+
+export function validWayfinderDescription(value) {
+  return value === "" || validWayfinderName(value);
+}
+
+export function wayfinderMarkerColor(marking) {
+  return marking.color ?? WAYFINDER_MARKER_COLORS[marking.type];
 }
 
 function validPosition(lat, lng) {
@@ -44,6 +58,11 @@ export function validateWayfinderMarkings(markings) {
       }
     } else if (!WAYFINDER_POINT_TYPES.includes(marking.type) ||
         !validPosition(marking.lat, marking.lng) || !validWayfinderName(marking.name)) {
+      return false;
+    } else if ((marking.type === "cp" || marking.type === "ta") &&
+        ((marking.description !== undefined && !validWayfinderDescription(marking.description)) ||
+         (marking.color !== undefined && (typeof marking.color !== "string" ||
+          !/^#[0-9a-f]{6}$/i.test(marking.color))))) {
       return false;
     }
   }

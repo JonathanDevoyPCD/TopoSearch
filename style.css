@@ -37,16 +37,13 @@
 }
 
 #map {
-  height: calc(100vh - 290px);
+  height: 100vh;
   min-height: 420px;
   background: #e7e5e4;
 }
 
 @media (max-width: 560px) {
-  #map {
-    height: 66vh;
-    min-height: 360px;
-  }
+
 }
 
 .map-shell {
@@ -220,6 +217,25 @@
   text-shadow: 0 0 3px white, 0 0 3px white;
 }
 
+.wayfinder-marker-label {
+  display: inline-block;
+  line-height: 1.2;
+  transform: translateX(-50%);
+  -webkit-text-stroke: 3px white;
+  paint-order: stroke fill;
+  text-shadow: none;
+  text-align: center;
+}
+
+.wayfinder-marker-name,
+.wayfinder-marker-description {
+  display: block;
+}
+
+.wayfinder-marker-name {
+  font-size: 15px;
+}
+
 #map.wayfinder-drawing {
   cursor: crosshair;
   touch-action: none;
@@ -233,4 +249,23 @@
   .wayfinder-panel {
     max-height: min(45vh, 260px);
   }
+}
+
+/* New Styling */
+section.rounded-xl.bg-white.p-4.shadow-sm.ring-1.ring-stone-200 {
+    position: absolute;
+    z-index: 999;
+    left: 10px;
+    top: 90px;
+    height: fit-content;
+    max-height: 100vh;
+    width: 300px;
+}
+
+header {
+    width: fit-content;
+    position: absolute !important;
+    top: 10px !important;
+    left: 10px;
+    border-radius: 0.75rem;
 }

@@ -1,5 +1,5 @@
 import { mercatorY } from "./print-layout.js";
-import { WAYFINDER_COLORS } from "./wayfinder-data.js";
+import { WAYFINDER_COLORS, wayfinderMarkerColor } from "./wayfinder-data.js";
 
 const mmToPt = (value) => value * 72 / 25.4;
 const number = (value) => value.toFixed(2);
@@ -19,7 +19,7 @@ export function projectWayfinderPoint(lat, lng, bounds, layout) {
   };
 }
 
-export function wayfinderPdfCommands(markings, bounds, layout) {
+export function wayfinderPdfCommands(markings, bounds, layout, measureText) {
   if (!markings.length) {
     return "";
   }
@@ -54,7 +54,7 @@ export function wayfinderPdfCommands(markings, bounds, layout) {
     }
     const point = project([marking.lat, marking.lng]);
     if (marking.type !== "label") {
-      const stroke = marking.type === "cp" ? "#e5007d" : marking.type === "ta" ? "#006de5" : "#000000";
+      const stroke = wayfinderMarkerColor(marking);
       const radius = 2.5;
       const k = radius * 0.5522847498;
       commands.push(`${rgb(stroke)} RG ${x(0.45)} w`);
@@ -65,7 +65,17 @@ export function wayfinderPdfCommands(markings, bounds, layout) {
       commands.push(`${x(point.x + k)} ${y(point.y + radius)} ${x(point.x + radius)} ${y(point.y + k)} ${x(point.x + radius)} ${y(point.y)} c S`);
     }
     const textX = point.x + (marking.type === "label" ? 0 : 3.5);
-    commands.push(`0 0 0 rg BT /F2 9 Tf ${x(textX)} ${y(point.y + 1)} Td (${pdfEscape(marking.name)}) Tj ET`);
+    if (marking.type === "cp" || marking.type === "ta") {
+      const centeredX = (value, size) => number(mmToPt(point.x) - measureText(value, size) / 2);
+      commands.push(`q ${rgb(wayfinderMarkerColor(marking))} rg 1 1 1 RG 0.8 w 1 j`);
+      commands.push(`BT /F2 10.4 Tf 2 Tr ${centeredX(marking.name, 10.4)} ${y(point.y + 6.1)} Td (${pdfEscape(marking.name)}) Tj ET`);
+      if (marking.description) {
+        commands.push(`BT /F2 9 Tf 2 Tr ${centeredX(marking.description, 9)} ${y(point.y + 10.2)} Td (${pdfEscape(marking.description)}) Tj ET`);
+      }
+      commands.push("Q");
+    } else {
+      commands.push(`0 0 0 rg BT /F2 9 Tf ${x(textX)} ${y(point.y + 1)} Td (${pdfEscape(marking.name)}) Tj ET`);
+    }
   }
   commands.push("Q");
   return commands.join("\n");

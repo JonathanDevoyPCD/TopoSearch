@@ -1,6 +1,7 @@
 import { authEnabled, wayfinderRequest } from "./auth.js";
 import {
-  WAYFINDER_COLORS, WAYFINDER_POINT_TYPES, validWayfinderName, validateWayfinderMarkings
+  WAYFINDER_COLORS, WAYFINDER_POINT_TYPES, validWayfinderName, validWayfinderDescription,
+  validateWayfinderMarkings, wayfinderMarkerColor
 } from "./wayfinder-data.js";
 
 export function createWayfinder(map) {
@@ -17,6 +18,9 @@ export function createWayfinder(map) {
   const dialog = document.querySelector("#wayfinder-name-dialog");
   const form = document.querySelector("#wayfinder-name-form");
   const nameInput = document.querySelector("#wayfinder-name");
+  const markerDetails = document.querySelector("#wayfinder-marker-details");
+  const descriptionInput = document.querySelector("#wayfinder-description");
+  const markerColorInput = document.querySelector("#wayfinder-marker-color");
   const nameError = document.querySelector("#wayfinder-name-error");
   const container = map.getContainer();
   const layers = L.layerGroup().addTo(map);
@@ -90,19 +94,31 @@ export function createWayfinder(map) {
         continue;
       }
       if (marking.type !== "label") {
-        const strokeColor = marking.type === "cp" ? "#e5007d" : marking.type === "ta" ? "#006de5" : "#000000";
         L.circleMarker([marking.lat, marking.lng], {
-          pane: "wayfinder", radius: 11, color: strokeColor, weight: 2.5,
+          pane: "wayfinder", radius: 11, color: wayfinderMarkerColor(marking), weight: 2.5,
           fill: false, interactive: false
         }).addTo(layers);
       }
       const label = document.createElement("span");
       label.className = "wayfinder-label";
-      label.textContent = marking.name;
+      const isMarker = marking.type === "cp" || marking.type === "ta";
+      if (isMarker) {
+        label.classList.add("wayfinder-marker-label");
+        label.style.color = wayfinderMarkerColor(marking);
+        const name = document.createElement("span");
+        name.className = "wayfinder-marker-name";
+        name.textContent = marking.name;
+        const description = document.createElement("span");
+        description.className = "wayfinder-marker-description";
+        description.textContent = marking.description ?? "";
+        label.append(name, description);
+      } else {
+        label.textContent = marking.name;
+      }
       L.marker([marking.lat, marking.lng], {
         pane: "wayfinder", interactive: false, keyboard: false,
         icon: L.divIcon({ className: "", html: label, iconSize: [0, 0],
-          iconAnchor: marking.type === "label" ? [0, 8] : [-15, 8] })
+          iconAnchor: isMarker ? [0, -15] : marking.type === "label" ? [0, 8] : [-15, 8] })
       }).addTo(layers);
     }
   }
@@ -125,10 +141,11 @@ export function createWayfinder(map) {
       };
       button("Move", () => setMode("move", marking.id));
       if (marking.type !== "highlight") {
-        button("Rename", () => nameMarking(marking.name, (name) => {
+        const isMarker = marking.type === "cp" || marking.type === "ta";
+        button(isMarker ? "Edit" : "Rename", () => nameMarking(marking, (details) => {
           const current = markings.find((entry) => entry.id === marking.id);
           if (current) {
-            current.name = name;
+            Object.assign(current, details);
             changed();
           }
         }));
@@ -250,9 +267,13 @@ export function createWayfinder(map) {
     }
   }
 
-  function nameMarking(defaultName, callback) {
+  function nameMarking(marking, callback) {
     pendingName = callback;
-    nameInput.value = defaultName;
+    nameInput.value = marking.name;
+    const isMarker = marking.type === "cp" || marking.type === "ta";
+    markerDetails.hidden = !isMarker;
+    descriptionInput.value = isMarker ? marking.description ?? "" : "";
+    markerColorInput.value = isMarker ? wayfinderMarkerColor(marking) : "#000000";
     nameError.hidden = true;
     dialog.showModal();
     nameInput.focus();
@@ -267,10 +288,21 @@ export function createWayfinder(map) {
       nameError.hidden = false;
       return;
     }
+    const details = { name };
+    if (!markerDetails.hidden) {
+      const description = descriptionInput.value.trim();
+      if (!validWayfinderDescription(description)) {
+        nameError.textContent = "The description must use up to 80 Latin letters, numbers or printable punctuation.";
+        nameError.hidden = false;
+        return;
+      }
+      details.description = description;
+      details.color = markerColorInput.value;
+    }
     const callback = pendingName;
     pendingName = null;
     dialog.close();
-    callback?.(name);
+    callback?.(details);
   });
   document.querySelector("#wayfinder-name-cancel").addEventListener("click", () => dialog.close());
   dialog.addEventListener("close", () => { pendingName = null; });
@@ -325,8 +357,8 @@ export function createWayfinder(map) {
       changed();
     } else if (WAYFINDER_POINT_TYPES.includes(mode)) {
       const type = mode;
-      nameMarking(nextName(type), (name) => add({
-        id: crypto.randomUUID(), type, name, lat: latlng.lat, lng: latlng.lng
+      nameMarking({ type, name: nextName(type) }, (details) => add({
+        id: crypto.randomUUID(), type, ...details, lat: latlng.lat, lng: latlng.lng
       }));
     }
   }

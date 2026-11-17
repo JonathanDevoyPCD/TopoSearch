@@ -79,10 +79,14 @@ The interface is styled with Tailwind CSS loaded from its CDN (`index.html`).
 
 **WayFinder** opens from the map's top-right corner. Choose CP, TA, Start,
 Finish or Label, click the map and name the marking. CP and TA names are
-suggested in sequence. Choose Highlighter and drag to draw; yellow, orange,
+suggested in sequence; each can also have an optional description and a
+custom marker colour. Their names and descriptions appear centred below the
+circle, matching its colour with white outlines on the map and in PDFs. Existing markers keep their default
+pink CP or blue TA colour until changed. Choose Highlighter and drag to draw; yellow, orange,
 cyan and green are available. Zoom in before drawing a narrower stroke. Use the
-markings list to move, rename or delete items, then choose **Frame / pan** to
-adjust the print frame or pan the map. Names support printable Latin-1 text.
+markings list to move, edit or delete items, then choose **Frame / pan** to
+adjust the print frame or pan the map. Names and descriptions support up to
+80 printable Latin-1 characters.
 
 Signed-in users' markings save to their account and load on other devices.
 Saving is not live-synchronized: if another device changes the markings,

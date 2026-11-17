@@ -149,12 +149,12 @@
       <header class="sticky top-0 z-[1100] border-b border-stone-200 bg-white/90 backdrop-blur">
         <div class="flex items-center justify-between gap-4 px-4 py-3 sm:px-6">
           <div class="flex min-w-0 items-center gap-3">
-            <span class="grid h-9 w-9 flex-none place-items-center rounded-lg bg-emerald-800 text-white" aria-hidden="true">
-              <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18l5-9 4 6 3-4 6 7z"></path></svg>
+            <span class="grid h-9 w-9 flex-none place-items-center rounded-lg text-white" aria-hidden="true">
+              <img src="assets/nav-top-search.png" alt="TopoSearch Logo">
             </span>
             <div class="min-w-0">
               <h1 class="truncate text-base font-semibold leading-tight">TopoSearch</h1>
-              <p class="hidden truncate text-xs text-stone-500 sm:block">South Africa topographic maps</p>
+              <p class="hidden truncate text-xs text-stone-500 sm:block">South Africa Topographic Maps</p>
             </div>
           </div>
 
@@ -209,7 +209,7 @@
         </div>
       </header>
 
-      <main class="mx-auto flex w-full flex-1 flex-col gap-4 px-4 py-4 sm:px-6">
+      <main class="mx-auto flex w-full flex-1 flex-col gap-4">
         <section class="rounded-xl bg-white p-4 shadow-sm ring-1 ring-stone-200" aria-label="Map controls">
           <div class="flex flex-wrap items-end gap-x-4 gap-y-3">
             <div class="w-full sm:w-52">
@@ -312,6 +312,12 @@
             <label for="wayfinder-name" class="label mt-4">Name</label>
             <input id="wayfinder-name" class="field" maxlength="80" required autocomplete="off">
             <p class="mt-2 text-xs text-stone-500">Up to 80 characters; Latin letters, numbers and punctuation.</p>
+            <div id="wayfinder-marker-details" hidden>
+              <label for="wayfinder-description" class="label mt-4">Description (optional)</label>
+              <input id="wayfinder-description" class="field" maxlength="80" autocomplete="off">
+              <label for="wayfinder-marker-color" class="label mt-4">Marker colour</label>
+              <input id="wayfinder-marker-color" type="color" value="#e5007d">
+            </div>
             <p id="wayfinder-name-error" class="mt-2 text-sm text-red-700" role="alert" hidden></p>
             <div class="mt-5 flex gap-2">
               <button class="btn-primary" type="submit">Save marking</button>

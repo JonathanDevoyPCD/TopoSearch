@@ -671,6 +671,14 @@ function makePdfContent({
   const centeredText = (value, centerX, y, size, font = "F1", color = "0 0 0") => {
     text(value, centerX - textWidth(value, size) / 2, y, size, font, color);
   };
+  const markerTextContext = document.createElement("canvas").getContext("2d");
+  if (!markerTextContext) {
+    throw new Error("This browser could not measure marker labels for the PDF.");
+  }
+  const measureMarkerText = (value, size) => {
+    markerTextContext.font = `bold ${size}pt Arial, sans-serif`;
+    return markerTextContext.measureText(value).width * 72 / 96;
+  };
   const line = (x1, y1, x2, y2, width = 0.3, color = "0 0 0", dash = "[] 0 d") => {
     commands.push(
       `${dash} ${color} RG ${mmToPt(width).toFixed(2)} w ${mmToPt(x1).toFixed(2)} ${mmToPt(pageHeight - y1).toFixed(2)} m ${mmToPt(x2).toFixed(2)} ${mmToPt(pageHeight - y2).toFixed(2)} l S`
@@ -701,7 +709,7 @@ function makePdfContent({
     commands.push(
       `${mmToPt(mapWidth).toFixed(2)} 0 0 ${mmToPt(mapHeight).toFixed(2)} ${mmToPt(mapX).toFixed(2)} ${mmToPt(pageHeight - mapY - mapHeight).toFixed(2)} cm /Im0 Do Q`
     );
-    commands.push(wayfinderPdfCommands(markings, lines.bounds, { pageHeight, mapX, mapY, mapWidth, mapHeight }));
+    commands.push(wayfinderPdfCommands(markings, lines.bounds, { pageHeight, mapX, mapY, mapWidth, mapHeight }, measureMarkerText));
     rectangle(mapX, mapY, mapWidth, mapHeight, "0 0 0", null, 0.35);
     const footer = mapY + mapHeight + 5;
     text(`True north up | Magnetic declination ${lines.declinationLabel} (${lines.declinationModel})`, margin, footer, 5.5);
@@ -746,7 +754,7 @@ function makePdfContent({
   commands.push(
     `${mmToPt(mapWidth).toFixed(2)} 0 0 ${mmToPt(mapHeight).toFixed(2)} ${mmToPt(mapX).toFixed(2)} ${mmToPt(pageHeight - mapY - mapHeight).toFixed(2)} cm /Im0 Do Q`
   );
-  commands.push(wayfinderPdfCommands(markings, lines.bounds, { pageHeight, mapX, mapY, mapWidth, mapHeight }));
+  commands.push(wayfinderPdfCommands(markings, lines.bounds, { pageHeight, mapX, mapY, mapWidth, mapHeight }, measureMarkerText));
   rectangle(mapX, mapY, mapWidth, mapHeight, "0 0 0", null, 0.4);
 
   const coordinateTicks = (min, max, interval) => {

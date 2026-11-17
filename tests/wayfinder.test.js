@@ -1,8 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { validateWayfinderMarkings } from "../wayfinder-data.js";
+import { validateWayfinderMarkings, wayfinderMarkerColor } from "../wayfinder-data.js";
 import { pdfEscape, projectWayfinderPoint, wayfinderPdfCommands } from "../wayfinder-print.js";
 import { mercatorY } from "../print-layout.js";
+
+const measureText = (value, size) => value.length * size / 2;
 
 test("validates marking types, coordinates, names and unique IDs", () => {
   const point = { id: "one", type: "cp", name: "CP1", lat: -34, lng: 25 };
@@ -17,6 +19,22 @@ test("validates marking types, coordinates, names and unique IDs", () => {
   assert.equal(validateWayfinderMarkings([{ ...highlight, points: [[-34, 25]] }]), false);
 });
 
+test("validates optional checkpoint and transition descriptions and colours", () => {
+  const cp = { id: "one", type: "cp", name: "CP1", lat: -34, lng: 25 };
+  const ta = { ...cp, type: "ta", name: "TA1" };
+  assert.equal(validateWayfinderMarkings([cp]), true);
+  assert.equal(wayfinderMarkerColor(cp), "#e5007d");
+  assert.equal(wayfinderMarkerColor(ta), "#006de5");
+  assert.equal(validateWayfinderMarkings([{ ...cp, description: "", color: "#Aa12Ff" }]), true);
+  assert.equal(validateWayfinderMarkings([{ ...ta, description: "Ferry Hotel", color: "#123456" }]), true);
+  for (const description of [null, "漢字", "x".repeat(81)]) {
+    assert.equal(validateWayfinderMarkings([{ ...cp, description }]), false);
+  }
+  for (const color of [null, "red", "#fff", "#00000000"]) {
+    assert.equal(validateWayfinderMarkings([{ ...cp, color }]), false);
+  }
+});
+
 test("projects markings into the Web Mercator map area", () => {
   const bounds = { west: 24, east: 26, north: -33, south: -35 };
   const layout = { mapX: 10, mapY: 20, mapWidth: 100, mapHeight: 200 };
@@ -28,6 +46,39 @@ test("projects markings into the Web Mercator map area", () => {
     (mercatorY(-33) - mercatorY(-35)))) < 1e-10);
 });
 
+test("PDF renders marker descriptions in matching colour with a white stroke", () => {
+  const bounds = { west: 24, east: 26, north: -33, south: -35 };
+  const layout = { pageHeight: 297, mapX: 10, mapY: 20, mapWidth: 100, mapHeight: 200 };
+  const markings = [
+    { id: "a", type: "cp", name: "CP1", description: "Café (old)", color: "#ff8000", lat: -34, lng: 25 },
+    { id: "b", type: "ta", name: "TA1", lat: -34, lng: 25 },
+    { id: "c", type: "start", name: "Start", lat: -34, lng: 25 }
+  ];
+  const commands = wayfinderPdfCommands(markings, bounds, layout, measureText);
+  assert.match(commands, /1\.000 0\.502 0\.000 RG/);
+  assert.match(commands, /q 1\.000 0\.502 0\.000 rg 1 1 1 RG 0\.8 w 1 j/);
+  assert.match(commands, /2 Tr .*?\(CP1\) Tj/);
+  assert.match(commands, /2 Tr .*?\(Caf\\351 \\\(old\\\)\) Tj/);
+  assert.match(commands, /q 0\.000 0\.427 0\.898 rg 1 1 1 RG/);
+  assert.match(commands, /0 0 0 rg BT \/F2 9 Tf .*?\(Start\) Tj/);
+});
+
+test("PDF places both marker labels centred below the circle", () => {
+  const bounds = { west: 24, east: 26, north: -33, south: -35 };
+  const layout = { pageHeight: 297, mapX: 10, mapY: 20, mapWidth: 100, mapHeight: 200 };
+  const marker = { id: "a", type: "cp", name: "CP1", description: "Abandoned House", lat: -34, lng: 25 };
+  const commands = wayfinderPdfCommands([marker], bounds, layout, measureText);
+  const name = /\/F2 10\.4 Tf 2 Tr ([\d.]+) ([\d.]+) Td \(CP1\)/.exec(commands);
+  const description = /\/F2 9 Tf 2 Tr ([\d.]+) ([\d.]+) Td \(Abandoned House\)/.exec(commands);
+  assert.ok(name && description);
+  const point = projectWayfinderPoint(marker.lat, marker.lng, bounds, layout);
+  const centerX = point.x * 72 / 25.4;
+  assert.ok(Math.abs(Number(name[1]) + measureText(marker.name, 10.4) / 2 - centerX) < 0.01);
+  assert.ok(Math.abs(Number(description[1]) + measureText(marker.description, 9) / 2 - centerX) < 0.01);
+  assert.ok(Number(name[2]) < (layout.pageHeight - point.y - 2.5) * 72 / 25.4);
+  assert.ok(Number(description[2]) < Number(name[2]));
+});
+
 test("PDF clips highlights and includes only point centres within the frame", () => {
   const bounds = { west: 24, east: 26, north: -33, south: -35 };
   const layout = { pageHeight: 297, mapX: 10, mapY: 20, mapWidth: 100, mapHeight: 200 };
@@ -36,7 +87,7 @@ test("PDF clips highlights and includes only point centres within the frame", ()
     { id: "b", type: "label", name: "Outside", lat: -34, lng: 27 },
     { id: "c", type: "highlight", color: "yellow", width: 100, points: [[-34, 23], [-34, 27]] }
   ];
-  const commands = wayfinderPdfCommands(markings, bounds, layout);
+  const commands = wayfinderPdfCommands(markings, bounds, layout, measureText);
   assert.match(commands, /re W n/);
   assert.match(commands, /\/WF gs/);
   assert.match(commands, /\(CP1\) Tj/);

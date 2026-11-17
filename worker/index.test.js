@@ -184,12 +184,14 @@ test("WayFinder saves per account and rejects stale or invalid updates", async (
       body: body === undefined ? undefined : JSON.stringify(body)
     }), { ...env, DB: binding }
   );
-  const point = { id: "a", type: "cp", name: "CP1", lat: -34, lng: 25 };
+  const point = { id: "a", type: "cp", name: "CP1", description: "Abandoned House", color: "#12ab34", lat: -34, lng: 25 };
   assert.deepEqual(await (await call(0)).json(), { revision: 0, markings: [] });
   assert.equal((await call(0, "POST", { revision: 0, markings: [point] })).status, 200);
+  assert.deepEqual(await (await call(0)).json(), { revision: 1, markings: [point] });
   assert.deepEqual(await (await call(1)).json(), { revision: 0, markings: [] });
   assert.equal((await call(0, "POST", { revision: 0, markings: [] })).status, 409);
   assert.equal((await call(0, "POST", { revision: 1, markings: [{ ...point, lat: 95 }] })).status, 400);
+  assert.equal((await call(0, "POST", { revision: 1, markings: [{ ...point, color: "red" }] })).status, 400);
   assert.equal((await call(0, "POST", { revision: 1, markings: [] })).status, 200);
   assert.deepEqual(await (await call(0)).json(), { revision: 2, markings: [] });
   const anonymous = await worker.fetch(new Request("https://example.test/wayfinder", {
