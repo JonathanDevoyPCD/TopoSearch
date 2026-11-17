@@ -163,7 +163,7 @@
               <svg class="h-4 w-4 flex-none text-emerald-700" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z"></path><circle cx="12" cy="10" r="2.5"></circle></svg>
               <span class="leading-tight">
                 <strong id="selected-sheet" class="block text-sm font-semibold">No frame</strong>
-                <span id="selected-sheet-name" class="block text-xs text-stone-500">Click the map</span>
+                <span id="selected-sheet-name" class="block text-xs text-stone-500">Create a race to begin</span>
               </span>
             </button>
 
@@ -241,11 +241,7 @@
             <div class="w-full sm:w-36">
               <label class="label" for="paper-size">Paper size</label>
               <select id="paper-size" class="field">
-                <option value="A0">A0 portrait</option>
-                <option value="A1" selected>A1 portrait</option>
-                <option value="A2">A2 portrait</option>
-                <option value="A3">A3 portrait</option>
-                <option value="A4">A4 portrait</option>
+                <option value="A3" selected>A3 portrait</option>
               </select>
             </div>
             <label class="flex items-center gap-2 pb-2.5 text-sm text-stone-700">
@@ -259,17 +255,26 @@
             <div id="wayfinder-panel" class="sidebar-content">
               <select id="wayfinder-view" hidden aria-label="Selected WayFinder map"></select>
               <div id="wayfinder-home">
-                <p class="wayfinder-footnote">Choose a race leg or view all markings.</p>
-                <div class="wayfinder-home-actions">
-                  <button id="wayfinder-master" type="button">Master Map</button>
-                  <button id="wayfinder-blank" type="button">Blank Map</button>
+                <button id="wayfinder-add-race" class="btn-primary w-full" type="button">Create Race</button>
+                <div id="wayfinder-race-library" hidden>
+                  <h3>My races</h3>
+                  <ul id="wayfinder-race-list" class="wayfinder-leg-list"></ul>
                 </div>
-                <h3>Race legs</h3>
+              </div>
+              <div id="wayfinder-race" hidden>
+                <button id="wayfinder-races-back" class="wayfinder-back" type="button">← Back to races</button>
+                <h3 id="wayfinder-race-name"></h3>
+                <button id="wayfinder-edit-race" type="button" class="btn-secondary">Edit race name</button>
+                <button id="wayfinder-master" class="btn-primary w-full" type="button">Create Map</button>
+              </div>
+              <div id="wayfinder-maps" hidden>
+                <button id="wayfinder-race-back" class="wayfinder-back" type="button">← Back to race</button>
+                <h3>Race maps</h3>
                 <ul id="wayfinder-leg-list" class="wayfinder-leg-list"></ul>
-                <button id="wayfinder-add-leg" type="button">Add leg</button>
+                <button id="wayfinder-add-leg" type="button">Add Leg</button>
               </div>
               <div id="wayfinder-editor" class="sidebar-content" hidden>
-              <button id="wayfinder-back" class="wayfinder-back" type="button">← Back to WayFinder</button>
+              <button id="wayfinder-back" class="wayfinder-back" type="button">← Back to race maps</button>
               <h3 id="wayfinder-editor-title"></h3>
               <div class="wayfinder-leg-actions">
                 <button id="wayfinder-edit-leg" type="button" hidden>Edit leg</button>
@@ -277,7 +282,11 @@
               </div>
               <p id="wayfinder-view-description" class="wayfinder-hint"></p>
               <div id="wayfinder-leg-map-controls" class="wayfinder-leg-map-controls" hidden>
-                <button id="wayfinder-frame-toggle" type="button">Lock map selection</button>
+                <button id="wayfinder-frame-toggle" type="button" aria-pressed="false">
+                  <svg id="wayfinder-unlocked-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 7.7-1.5"></path></svg>
+                  <svg id="wayfinder-locked-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" hidden><rect x="4" y="11" width="16" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>
+                  <span id="wayfinder-frame-toggle-text">Lock map selection</span>
+                </button>
                 <p id="wayfinder-frame-status" class="wayfinder-footnote"></p>
                 <button id="wayfinder-download-master" type="button">Download Master PDF</button>
                 <button id="wayfinder-download-blank" type="button">Download Blank PDF</button>
@@ -332,7 +341,7 @@
                 <span><span id="race-map-label">Original race map (TIF)</span> <small id="race-map-size" class="font-normal opacity-90"></small></span>
               </a>
               <a class="link text-sm" id="race-map-world" href="#" hidden>World file (.tfw)</a>
-              <button class="btn-secondary" id="clear-frame" type="button">Clear frame</button>
+              <button class="btn-secondary" id="clear-frame" type="button" hidden>Clear frame</button>
             </div>
             <p id="generic-print-hint" class="wayfinder-footnote" hidden>Use the Master or Blank download in the selected leg, or return to WayFinder to choose a global map.</p>
             <p class="mt-3 text-xs text-stone-500">PDFs are 1:50 000 at the frame centre when printed at actual size; scale varies slightly across the map. The inner outline is the printed map and the shaded border holds page details. Original race-map TIF files have separate print settings.</p>
@@ -345,6 +354,19 @@
         <div class="map-shell overflow-hidden rounded-xl shadow-sm ring-1 ring-stone-300">
           <div id="map" aria-label="Interactive topographic map"></div>
         </div>
+
+        <dialog id="wayfinder-race-dialog" aria-labelledby="wayfinder-race-title" class="w-[min(90vw,28rem)] rounded-xl bg-white p-6 text-stone-900 shadow-xl">
+          <form id="wayfinder-race-form">
+            <h2 id="wayfinder-race-title" class="text-lg font-semibold">Create Race</h2>
+            <label for="wayfinder-race-input" class="label mt-4">Race name</label>
+            <input id="wayfinder-race-input" class="field" maxlength="80" required autocomplete="off">
+            <p id="wayfinder-race-error" class="mt-2 text-sm text-red-700" role="alert" hidden></p>
+            <div class="mt-5 flex gap-2">
+              <button id="wayfinder-race-submit" class="btn-primary" type="submit">Create Race</button>
+              <button id="wayfinder-race-cancel" class="btn-secondary" type="button">Cancel</button>
+            </div>
+          </form>
+        </dialog>
 
         <dialog id="wayfinder-leg-dialog" aria-labelledby="wayfinder-leg-title" class="w-[min(90vw,28rem)] rounded-xl bg-white p-6 text-stone-900 shadow-xl">
           <form id="wayfinder-leg-form">

@@ -24,6 +24,7 @@ export const WAYFINDER_POINT_TYPES = ["cp", "ta", "start", "finish", "label"];
 export const WAYFINDER_MAX_MARKINGS = 500;
 export const WAYFINDER_MAX_POINTS = 10000;
 export const WAYFINDER_MAX_LEGS = 100;
+export const WAYFINDER_MAX_RACES = 100;
 
 export function validWayfinderName(value) {
   return typeof value === "string" && value.trim().length > 0 &&
@@ -86,10 +87,19 @@ export function validateWayfinderData(data) {
   if (Array.isArray(data)) {
     return validateWayfinderMarkings(data);
   }
-  if (!data || typeof data !== "object" || data.version !== 1 ||
-      !Array.isArray(data.legs) || data.legs.length > WAYFINDER_MAX_LEGS ||
+  if (!data || typeof data !== "object" || ![1, 2].includes(data.version) ||
+      !Array.isArray(data.legs) || data.legs.length > WAYFINDER_MAX_LEGS + (data.version === 2 ? 1 : 0) ||
       !validateWayfinderMarkings(data.markings)) {
     return false;
+  }
+  const raceIds = new Set();
+  if (data.version === 2) {
+    if (!Array.isArray(data.races) || data.races.length > WAYFINDER_MAX_RACES) return false;
+    for (const race of data.races) {
+      if (!race || typeof race.id !== "string" || !/^[a-zA-Z0-9-]{1,64}$/.test(race.id) ||
+          raceIds.has(race.id) || !validWayfinderName(race.name)) return false;
+      raceIds.add(race.id);
+    }
   }
   const legIds = new Set();
   for (const leg of data.legs) {
@@ -97,14 +107,44 @@ export function validateWayfinderData(data) {
         leg.id === "master" || leg.id === "blank" ||
         legIds.has(leg.id) || !validWayfinderName(leg.name) ||
         !validWayfinderDescription(leg.description) ||
-        (leg.frame !== undefined && !validWayfinderFrame(leg.frame))) {
+        (data.version === 2 && !raceIds.has(leg.raceId)) ||
+        (leg.draft !== undefined && (!leg.draft || !validPosition(leg.draft.lat, leg.draft.lng))) ||
+        (leg.frame !== undefined && (!validWayfinderFrame(leg.frame) ||
+          (data.version === 2 && leg.frame.paperSize !== "A3")))) {
       return false;
     }
     legIds.add(leg.id);
   }
   return data.markings.every((marking) =>
-    (marking.legId === undefined || legIds.has(marking.legId)) &&
+    ((data.version === 1 && marking.legId === undefined) || legIds.has(marking.legId)) &&
     (marking.showOnBlank === undefined || typeof marking.showOnBlank === "boolean"));
+}
+
+export function migrateWayfinderData(data, newId) {
+  if (!validateWayfinderData(data)) throw new Error("The saved markings are invalid.");
+  if (!Array.isArray(data) && data.version === 2) return structuredClone(data);
+  const markings = structuredClone(Array.isArray(data) ? data : data.markings);
+  const legs = structuredClone(Array.isArray(data) ? [] : data.legs);
+  if (!markings.length && !legs.length) return { version: 2, races: [], legs: [], markings: [] };
+  const race = { id: newId(), name: "Imported race" };
+  for (const leg of legs) {
+    leg.raceId = race.id;
+    if (leg.frame && leg.frame.paperSize !== "A3") {
+      leg.frame = { ...leg.frame, id: newId(), paperSize: "A3" };
+    }
+  }
+  const legIds = new Set(legs.map((leg) => leg.id));
+  const unassigned = markings.filter((marking) => !legIds.has(marking.legId));
+  if (unassigned.length) {
+    const leg = { id: newId(), raceId: race.id, name: "Imported markings", description: "" };
+    legs.push(leg);
+    for (const marking of unassigned) marking.legId = leg.id;
+  }
+  const migrated = { version: 2, races: [race], legs, markings };
+  if (!validateWayfinderData(migrated)) {
+    throw new Error("The existing markings could not be imported safely.");
+  }
+  return migrated;
 }
 
 export function validWayfinderFrame(frame) {

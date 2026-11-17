@@ -118,7 +118,6 @@ let frameRect = null;
 let frameHandle = null;
 let paperRect = null;
 let paperMask = null;
-let printLabel = null;
 let suppressFrameClick = false;
 let suppressFrameClickTimer = null;
 let pendingLegPrint = null;
@@ -130,9 +129,10 @@ document.addEventListener("toposearch:leg-view", (event) => {
   paperSelect.disabled = frameLocked;
   clearFrameButton.disabled = frameLocked;
   map.getContainer().classList.toggle("frame-locked", frameLocked);
-  if (frame) {
-    const clamped = clampFrameCenter({ lat: frame.lat, lng: frame.lng }, frame.paperSize, downloadArea());
-    if (Math.abs(clamped.lat - frame.lat) > 1e-8 || Math.abs(clamped.lng - frame.lng) > 1e-8) {
+  const position = frame ?? event.detail.leg?.draft ?? (event.detail.leg ? map.getCenter() : null);
+  if (position) {
+    const clamped = clampFrameCenter({ lat: position.lat, lng: position.lng }, "A3", downloadArea());
+    if (frame && (Math.abs(clamped.lat - frame.lat) > 1e-8 || Math.abs(clamped.lng - frame.lng) > 1e-8)) {
       lockedFrameUsable = false;
       freeFrame = null;
       frameCenter = null;
@@ -143,8 +143,12 @@ document.addEventListener("toposearch:leg-view", (event) => {
       setStatus("The locked frame is outside the downloadable area. Unlock it to select a new frame.", "error");
       return;
     }
-    paperSelect.value = frame.paperSize;
-    setFrameCenter(L.latLng(frame.lat, frame.lng), { allowLocked: true });
+    setFrameCenter(L.latLng(frame ?? clamped), { allowLocked: true });
+  } else {
+    freeFrame = null;
+    frameCenter = null;
+    selectedSheet = null;
+    renderSheetLayer();
   }
   renderFrame();
   updateSelectedSheetDetails();
@@ -156,8 +160,9 @@ document.querySelector("#wayfinder-frame-toggle").addEventListener("click", () =
   if (leg.frame) {
     if (!window.confirm("Unlock this leg's map selection? Moving it changes both the Master and Blank maps and requires a new generation.")) return;
     wayfinder.setFrame(null);
+    setStatus("Map selection unlocked. Drag the frame or click the map to reposition it.");
   } else if (!frameCenter || !freeFrame) {
-    setStatus("Place a frame before locking the leg map.", "error");
+    setStatus("Select a leg and position its map before locking.", "error");
   } else {
     wayfinder.setFrame({ id: crypto.randomUUID(), lat: frameCenter.lat, lng: frameCenter.lng, paperSize: paperSelect.value });
   }
@@ -269,12 +274,14 @@ function updateRaceMapButton() {
 
 function updateSelectedSheetDetails() {
   const target = activeTarget();
+  wayfinder.setMapFrameAvailable(Boolean(target));
+  map.getContainer().classList.toggle("frame-mode", Boolean(target));
   const legSelected = Boolean(wayfinder.selectedLeg());
   document.querySelector("#generic-print-hint").hidden = !legSelected;
   updateRaceMapButton();
   if (!target) {
     selectedSheetElement.textContent = "No frame";
-    selectedSheetNameElement.textContent = "Click the map";
+    selectedSheetNameElement.textContent = "Add a leg to create a map";
     printButton.disabled = true;
     printButton.title = "";
     return;
@@ -333,7 +340,7 @@ map.on("click", (event) => {
     suppressFrameClick = false;
     return;
   }
-  placeFrame(event.latlng);
+  if (freeFrame) placeFrame(event.latlng);
 });
 
 function downloadArea() {
@@ -359,13 +366,13 @@ function leafletBounds({ west, east, south, north }) {
 function setFrameCenter(center, { moveHandle = true, allowLocked = false } = {}) {
   if (frameLocked && !allowLocked) return;
   frameCenter = L.latLng(clampFrameCenter(center, paperSelect.value, downloadArea()));
+  if (!frameLocked) wayfinder.setDraft(frameCenter);
   const geometry = frameGeometry(frameCenter, paperSelect.value);
   freeFrame = frameFeature(frameCenter, paperSelect.value);
   selectedSheet = sheetAt(frameCenter);
   frameRect?.setBounds(leafletBounds(geometry.map));
   paperRect?.setBounds(leafletBounds(geometry.paper));
   paperMask?.setLatLngs(paperMaskRings(geometry));
-  printLabel?.setLatLng([geometry.map.north, geometry.map.west]);
   if (moveHandle) {
     frameHandle?.setLatLng(frameCenter);
   }
@@ -409,16 +416,15 @@ function renderFrame() {
   frameHandle?.remove();
   paperRect?.remove();
   paperMask?.remove();
-  printLabel?.remove();
   frameRect = null;
   frameHandle = null;
   paperRect = null;
   paperMask = null;
-  printLabel = null;
   if (!freeFrame) {
     return;
   }
   const geometry = frameGeometry(frameCenter, paperSelect.value);
+  const frameColor = frameLocked ? "#b91c1c" : "#047857";
   paperMask = L.polygon(paperMaskRings(geometry), {
     pane: "paper-preview",
     stroke: false,
@@ -428,7 +434,7 @@ function renderFrame() {
   }).addTo(map);
   paperRect = L.rectangle(leafletBounds(geometry.paper), {
     pane: "paper-preview",
-    color: "#57534e",
+    color: frameColor,
     weight: 2,
     dashArray: "6 5",
     fill: false,
@@ -439,21 +445,15 @@ function renderFrame() {
   paperRect.on("mousedown", startFrameDrag);
   frameRect = L.rectangle(leafletBounds(geometry.map), {
     pane: "paper-preview",
-    color: "#d14d2a",
+    color: frameColor,
     weight: 3,
-    fillColor: "#f0b27e",
-    fillOpacity: 0.08,
+    fillColor: frameColor,
+    fillOpacity: 0.03,
     bubblingMouseEvents: false,
     className: "free-frame",
     interactive: !frameLocked
   }).addTo(map);
   frameRect.on("mousedown", startFrameDrag);
-  printLabel = L.marker([geometry.map.north, geometry.map.west], {
-    pane: "paper-preview",
-    interactive: false,
-    keyboard: false,
-    icon: L.divIcon({ className: "print-area-watermark", html: "PRINTED MAP", iconSize: [100, 22], iconAnchor: [-6, -6] })
-  }).addTo(map);
   frameHandle = L.marker(frameCenter, {
     draggable: !frameLocked,
     keyboard: false,
@@ -486,10 +486,9 @@ clearFrameButton.addEventListener("click", () => {
   renderFrame();
   renderSheetLayer();
   updateSelectedSheetDetails();
-  setStatus("Free frame cleared. Click the map to place a new one.");
+  setStatus("Map cleared. Select a leg to create its map.");
 });
 
-map.getContainer().classList.add("frame-mode");
 const area = downloadArea();
 L.rectangle([[area.south, area.west], [area.north, area.east]], {
   color: "#597343",
@@ -539,12 +538,17 @@ async function loadSheetIndex() {
     if (!sheetCollections["50k"].features.length) {
       throw new Error("No 1:50,000 map sheets are available.");
     }
-    placeFrame(L.latLng(INITIAL_CENTER));
-    setStatus(
-      IS_GITHUB_PAGES && !PDF_WORKER_BASE_URL
-        ? "Deploy the Cloudflare Worker and configure its URL to enable PDF downloads."
-        : "Click or drag the frame to select an area. The inner outline is the printed map."
-    );
+    if (frameCenter) {
+      selectedSheet = sheetAt(frameCenter);
+      renderSheetLayer();
+      updateSelectedSheetDetails();
+    } else {
+      setStatus(
+        IS_GITHUB_PAGES && !PDF_WORKER_BASE_URL
+          ? "Deploy the Cloudflare Worker and configure its URL to enable PDF downloads."
+          : "Open WayFinder and create a race to begin."
+      );
+    }
   } catch (error) {
     setStatus(`Could not load the local sheet index: ${error.message}`, "error");
   }

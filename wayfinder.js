@@ -1,9 +1,10 @@
 import { authEnabled, wayfinderRequest } from "./auth.js";
 import {
-  WAYFINDER_COLORS, WAYFINDER_LABEL_POSITIONS, WAYFINDER_MAX_LEGS, WAYFINDER_POINT_TYPES,
+  WAYFINDER_COLORS, WAYFINDER_LABEL_POSITIONS, WAYFINDER_MAX_LEGS, WAYFINDER_MAX_RACES, WAYFINDER_POINT_TYPES,
   validWayfinderName, validWayfinderDescription, validateWayfinderData, validateWayfinderMarkings,
-  visibleWayfinderMarkings, legWayfinderMarkings, wayfinderMarkerColor
+  visibleWayfinderMarkings, legWayfinderMarkings, wayfinderMarkerColor, migrateWayfinderData
 } from "./wayfinder-data.js";
+import { frameGeometry } from "./print-layout.js";
 
 export function createWayfinder(map) {
   const mercatorWorldWidth = 2 * Math.PI * 6378137;
@@ -11,11 +12,21 @@ export function createWayfinder(map) {
   const section = document.querySelector("#wayfinder");
   const viewSelect = document.querySelector("#wayfinder-view");
   const home = document.querySelector("#wayfinder-home");
+  const raceScreen = document.querySelector("#wayfinder-race");
+  const mapsScreen = document.querySelector("#wayfinder-maps");
+  const raceList = document.querySelector("#wayfinder-race-list");
+  const raceDialog = document.querySelector("#wayfinder-race-dialog");
+  const raceForm = document.querySelector("#wayfinder-race-form");
+  const raceInput = document.querySelector("#wayfinder-race-input");
+  const raceError = document.querySelector("#wayfinder-race-error");
   const editor = document.querySelector("#wayfinder-editor");
   const editorTitle = document.querySelector("#wayfinder-editor-title");
   const legList = document.querySelector("#wayfinder-leg-list");
   const legMapControls = document.querySelector("#wayfinder-leg-map-controls");
   const frameToggle = document.querySelector("#wayfinder-frame-toggle");
+  const frameToggleText = document.querySelector("#wayfinder-frame-toggle-text");
+  const unlockedIcon = document.querySelector("#wayfinder-unlocked-icon");
+  const lockedIcon = document.querySelector("#wayfinder-locked-icon");
   const frameStatus = document.querySelector("#wayfinder-frame-status");
   const legDownloads = document.querySelectorAll("#wayfinder-download-master, #wayfinder-download-blank");
   const viewDescription = document.querySelector("#wayfinder-view-description");
@@ -52,9 +63,12 @@ export function createWayfinder(map) {
 
   let markings = [];
   let legs = [];
+  let races = [];
+  let selectedRace = null;
+  let screen = "home";
   let selectedView = "master";
-  let homeOpen = true;
   let editingLegId = null;
+  let editingRace = false;
   let mode = "pan";
   let movingId = null;
   let revision = 0;
@@ -69,6 +83,16 @@ export function createWayfinder(map) {
   let stroke = null;
   let draftLayer = null;
   let consumeClick = false;
+  let frameAvailable = false;
+
+  function renderFrameStatus() {
+    const leg = legs.find((entry) => entry.id === selectedView);
+    frameStatus.textContent = leg?.frame
+      ? `Locked: ${leg.frame.paperSize}, ${Math.abs(leg.frame.lat).toFixed(4)}° S, ${leg.frame.lng.toFixed(4)}° E.`
+      : frameAvailable
+        ? "Unlocked: Position the frame, then lock it before downloading."
+        : "Unlocked: Position the map frame before locking.";
+  }
 
   function setSaveStatus(message, error = false, action = null) {
     saveStatus.textContent = message;
@@ -118,20 +142,37 @@ export function createWayfinder(map) {
 
   function draw() {
     layers.clearLayers();
-    const visible = visibleWayfinderMarkings({ markings }, selectedView);
+    const activeLeg = legs.find((leg) => leg.id === selectedView && leg.raceId === selectedRace);
+    if (!activeLeg || screen !== "editor") return;
+    const raceLegs = legs.filter((leg) => leg.raceId === selectedRace);
+    for (const leg of raceLegs) {
+      const position = leg.frame ?? leg.draft;
+      if (leg.id === activeLeg.id || !position) continue;
+      const geometry = frameGeometry(position, "A3");
+      for (const bounds of [geometry.paper, geometry.map]) {
+        L.rectangle([[bounds.south, bounds.west], [bounds.north, bounds.east]], {
+          pane: "wayfinder", color: leg.frame ? "#b91c1c" : "#047857",
+          opacity: 0.2, weight: 2, fill: false, interactive: false
+        }).addTo(layers);
+      }
+    }
+    const legIds = new Set(raceLegs.map((leg) => leg.id));
+    const visible = markings.filter((marking) => legIds.has(marking.legId));
     const ordered = [...visible.filter((marking) => marking.type === "highlight"),
-      ...visible.filter((marking) => marking.type !== "highlight")];
+      ...visible.filter((marking) => marking.type !== "highlight")]
+      .sort((a, b) => Number(a.legId === activeLeg.id) - Number(b.legId === activeLeg.id));
     for (const marking of ordered) {
+      const opacity = marking.legId === activeLeg.id ? 1 : 0.2;
       if (marking.type === "highlight") {
         L.polyline(marking.points, {
-          pane: "wayfinder", color: WAYFINDER_COLORS[marking.color], opacity: 0.45,
+          pane: "wayfinder", color: WAYFINDER_COLORS[marking.color], opacity: 0.45 * opacity,
           weight: marking.width * 256 * 2 ** map.getZoom() / mercatorWorldWidth, interactive: false
         }).addTo(layers);
         continue;
       }
       if (marking.type !== "label") {
         L.circleMarker([marking.lat, marking.lng], {
-          pane: "wayfinder", radius: 11, color: wayfinderMarkerColor(marking), weight: 2.5,
+          pane: "wayfinder", radius: 11, color: wayfinderMarkerColor(marking), weight: 2.5, opacity,
           fill: false, interactive: false
         }).addTo(layers);
       }
@@ -157,7 +198,7 @@ export function createWayfinder(map) {
         label.textContent = marking.name;
       }
       L.marker([marking.lat, marking.lng], {
-        pane: "wayfinder", interactive: false, keyboard: false,
+        pane: "wayfinder", interactive: false, keyboard: false, opacity,
         icon: L.divIcon({ className: "", html: label, iconSize: [0, 0],
           iconAnchor })
       }).addTo(layers);
@@ -165,14 +206,11 @@ export function createWayfinder(map) {
   }
 
   function renderList() {
-    const visible = visibleWayfinderMarkings({ markings }, selectedView);
-    const entries = selectedView === "blank" ? markings : visible;
+    const visible = legWayfinderMarkings({ markings }, selectedView);
     count.textContent = String(visible.length);
-    listHint.textContent = selectedView === "blank"
-      ? "Uncheck Hide on Blank Map to include a marking."
-      : "Assign each marking to one leg, or leave it unassigned.";
+    listHint.textContent = "Move, edit, or assign each marking to another leg in this race.";
     list.replaceChildren();
-    for (const marking of entries) {
+    for (const marking of visible) {
       const item = document.createElement("li");
       const title = document.createElement("strong");
       title.textContent = marking.type === "highlight" ? `${marking.color} highlight` : marking.name;
@@ -191,8 +229,7 @@ export function createWayfinder(map) {
       const assignment = document.createElement("select");
       assignment.className = "field";
       assignment.setAttribute("aria-label", `Leg for ${title.textContent}`);
-      assignment.add(new Option("Unassigned", ""));
-      for (const leg of legs) {
+      for (const leg of legs.filter((entry) => entry.raceId === selectedRace)) {
         assignment.add(new Option(leg.description ? `${leg.name} - ${leg.description}` : leg.name, leg.id));
       }
       assignment.value = marking.legId ?? "";
@@ -238,8 +275,8 @@ export function createWayfinder(map) {
   }
 
   function renderViews() {
-    viewSelect.replaceChildren(new Option("Master Map", "master"), new Option("Blank Map", "blank"));
-    for (const leg of legs) {
+    viewSelect.replaceChildren(new Option("Race maps", "master"));
+    for (const leg of legs.filter((entry) => entry.raceId === selectedRace)) {
       viewSelect.add(new Option(leg.description ? `${leg.name} - ${leg.description}` : leg.name, leg.id));
     }
     if (selectedView !== "master" && selectedView !== "blank" && !legs.some((leg) => leg.id === selectedView)) {
@@ -247,18 +284,36 @@ export function createWayfinder(map) {
     }
     viewSelect.value = selectedView;
     const leg = legs.find((entry) => entry.id === selectedView);
-    home.hidden = !homeOpen;
-    editor.hidden = homeOpen;
-    editorTitle.textContent = leg ? (leg.description ? `${leg.name} - ${leg.description}` : leg.name)
-      : selectedView === "blank" ? "Blank Map" : "Master Map";
+    home.hidden = screen !== "home";
+    raceScreen.hidden = screen !== "race";
+    mapsScreen.hidden = screen !== "maps";
+    editor.hidden = screen !== "editor";
+    document.querySelector("#wayfinder-race-library").hidden = !races.length;
+    document.querySelector("#wayfinder-race-name").textContent = races.find((race) => race.id === selectedRace)?.name ?? "";
+    document.querySelector("#wayfinder-master").textContent =
+      legs.some((entry) => entry.raceId === selectedRace) ? "View Maps" : "Create Map";
+    raceList.replaceChildren();
+    for (const race of races) {
+      const item = document.createElement("li");
+      const button = document.createElement("button");
+      button.type = "button";
+      button.disabled = !ready;
+      button.textContent = race.name;
+      button.addEventListener("click", () => { selectedRace = race.id; screen = "race"; renderViews(); });
+      item.append(button);
+      raceList.append(item);
+    }
+    editorTitle.textContent = leg ? (leg.description ? `${leg.name} - ${leg.description}` : leg.name) : "";
     legMapControls.hidden = !leg;
-    frameToggle.textContent = leg?.frame ? "Unlock map selection" : "Lock map selection";
-    frameStatus.textContent = leg?.frame
-      ? `Locked: ${leg.frame.paperSize}, ${Math.abs(leg.frame.lat).toFixed(4)}° S, ${leg.frame.lng.toFixed(4)}° E.`
-      : "Position the frame and choose a paper size, then lock it before downloading.";
+    frameToggle.dataset.locked = String(Boolean(leg?.frame));
+    frameToggle.setAttribute("aria-pressed", String(Boolean(leg?.frame)));
+    frameToggleText.textContent = leg?.frame ? "Unlock map selection" : "Lock map selection";
+    unlockedIcon.toggleAttribute("hidden", Boolean(leg?.frame));
+    lockedIcon.toggleAttribute("hidden", !leg?.frame);
+    renderFrameStatus();
     legDownloads.forEach((button) => { button.disabled = !ready || !leg?.frame; });
     legList.replaceChildren();
-    for (const entry of legs) {
+    for (const entry of legs.filter((item) => item.raceId === selectedRace)) {
       const item = document.createElement("li");
       const button = document.createElement("button");
       button.type = "button";
@@ -270,24 +325,22 @@ export function createWayfinder(map) {
     }
     editLeg.hidden = !leg;
     deleteLeg.hidden = !leg;
-    viewDescription.textContent = leg ? "New markings are added to this leg."
-      : selectedView === "blank" ? "Only markings not hidden from the Blank Map are shown."
-      : "Shows every marking. New markings are unassigned.";
+    viewDescription.textContent = "Other legs are faded while you edit this map.";
   }
 
   function currentData() {
-    return { version: 1, legs, markings };
+    return { version: 2, races, legs, markings };
   }
 
   function notifyView() {
     document.dispatchEvent(new CustomEvent("toposearch:leg-view", {
-      detail: { leg: legs.find((entry) => entry.id === selectedView) ?? null }
+      detail: { leg: screen === "editor" ? legs.find((entry) => entry.id === selectedView) ?? null : null }
     }));
   }
 
   function openView(view) {
     selectedView = view;
-    homeOpen = false;
+    screen = "editor";
     setMode("pan");
     renderViews();
     draw();
@@ -397,18 +450,23 @@ export function createWayfinder(map) {
           !validateWayfinderData(result.markings)) {
         throw new Error("The saved markings are invalid.");
       }
-      markings = Array.isArray(result.markings) ? result.markings : result.markings.markings;
-      legs = Array.isArray(result.markings) ? [] : result.markings.legs;
+      const needsMigration = Array.isArray(result.markings) || result.markings.version !== 2;
+      const data = migrateWayfinderData(result.markings, () => crypto.randomUUID());
+      markings = data.markings;
+      legs = data.legs;
+      races = data.races;
+      selectedRace = null;
       selectedView = "master";
-      homeOpen = true;
+      screen = "home";
       revision = result.revision;
-      generation = 0;
+      generation = needsMigration && (legs.length || markings.length) ? 1 : 0;
       savedGeneration = 0;
       setReady(true);
       renderViews();
       draw();
       renderList();
-      setSaveStatus("Saved to your account.");
+      if (generation) scheduleSave();
+      else setSaveStatus("Saved to your account.");
       notifyView();
     } catch (error) {
       if (currentEpoch === epoch) {
@@ -470,7 +528,8 @@ export function createWayfinder(map) {
       return type === "start" ? "Start" : type === "finish" ? "Finish" : "";
     }
     const prefix = type.toUpperCase();
-    const used = markings.filter((marking) => marking.type === type)
+    const raceLegIds = new Set(legs.filter((leg) => leg.raceId === selectedRace).map((leg) => leg.id));
+    const used = markings.filter((marking) => marking.type === type && raceLegIds.has(marking.legId))
       .map((marking) => new RegExp(`^${prefix}(\\d+)$`, "i").exec(marking.name))
       .filter(Boolean).map((match) => Number(match[1]));
     return `${prefix}${Math.max(0, ...used) + 1}`;
@@ -614,11 +673,69 @@ export function createWayfinder(map) {
       setMode("pan");
     }
   });
-  document.querySelector("#wayfinder-master").addEventListener("click", () => openView("master"));
-  document.querySelector("#wayfinder-blank").addEventListener("click", () => openView("blank"));
+  document.querySelector("#wayfinder-add-race").addEventListener("click", () => {
+    if (races.length >= WAYFINDER_MAX_RACES) {
+      setSaveStatus("Race limit reached.", true);
+      return;
+    }
+    editingRace = false;
+    document.querySelector("#wayfinder-race-title").textContent = "Create Race";
+    document.querySelector("#wayfinder-race-submit").textContent = "Create Race";
+    raceInput.value = "";
+    raceError.hidden = true;
+    raceDialog.showModal();
+    raceInput.focus();
+  });
+  document.querySelector("#wayfinder-edit-race").addEventListener("click", () => {
+    const race = races.find((entry) => entry.id === selectedRace);
+    if (!race) return;
+    editingRace = true;
+    document.querySelector("#wayfinder-race-title").textContent = "Edit race name";
+    document.querySelector("#wayfinder-race-submit").textContent = "Save race";
+    raceInput.value = race.name;
+    raceError.hidden = true;
+    raceDialog.showModal();
+    raceInput.focus();
+    raceInput.select();
+  });
+  raceForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const name = raceInput.value.trim();
+    if (!validWayfinderName(name)) {
+      raceError.textContent = "Use up to 80 printable Latin-1 characters.";
+      raceError.hidden = false;
+      return;
+    }
+    if (editingRace) {
+      const race = races.find((entry) => entry.id === selectedRace);
+      if (!race) return;
+      race.name = name;
+    } else {
+      const race = { id: crypto.randomUUID(), name };
+      races.push(race);
+      selectedRace = race.id;
+    }
+    screen = "race";
+    raceDialog.close();
+    changed();
+  });
+  document.querySelector("#wayfinder-race-cancel").addEventListener("click", () => raceDialog.close());
+  document.querySelector("#wayfinder-races-back").addEventListener("click", () => {
+    screen = "home";
+    selectedRace = null;
+    renderViews();
+  });
+  document.querySelector("#wayfinder-master").addEventListener("click", () => {
+    screen = "maps";
+    renderViews();
+  });
+  document.querySelector("#wayfinder-race-back").addEventListener("click", () => {
+    screen = "race";
+    renderViews();
+  });
   document.querySelector("#wayfinder-back").addEventListener("click", () => {
     selectedView = "master";
-    homeOpen = true;
+    screen = "maps";
     setMode("pan");
     renderViews();
     draw();
@@ -631,7 +748,7 @@ export function createWayfinder(map) {
       return;
     }
     editingLegId = null;
-    const numbers = legs.map((leg) => /^LEG (\d+)$/i.exec(leg.name)).filter(Boolean)
+    const numbers = legs.filter((leg) => leg.raceId === selectedRace).map((leg) => /^LEG (\d+)$/i.exec(leg.name)).filter(Boolean)
       .map((match) => Number(match[1]));
     legName.value = `LEG ${Math.max(0, ...numbers) + 1}`;
     legDescription.value = "";
@@ -651,13 +768,16 @@ export function createWayfinder(map) {
   });
   deleteLeg.addEventListener("click", () => {
     const leg = legs.find((entry) => entry.id === selectedView);
-    if (!leg || !window.confirm(`Delete ${leg.name}? Its markings will remain on the Master Map as unassigned.`)) return;
+    if (!leg || !window.confirm(`Delete ${leg.name}? Its markings will be kept in a separate Recovered markings map.`)) return;
+    const orphaned = markings.filter((marking) => marking.legId === leg.id);
     legs = legs.filter((entry) => entry.id !== leg.id);
-    for (const marking of markings) {
-      if (marking.legId === leg.id) delete marking.legId;
+    if (orphaned.length) {
+      const recovered = { id: crypto.randomUUID(), raceId: leg.raceId, name: "Recovered markings", description: "" };
+      legs.push(recovered);
+      for (const marking of orphaned) marking.legId = recovered.id;
     }
     selectedView = "master";
-    homeOpen = true;
+    screen = "maps";
     setMode("pan");
     changed();
     notifyView();
@@ -676,10 +796,10 @@ export function createWayfinder(map) {
       if (!leg) return;
       Object.assign(leg, { name, description });
     } else {
-      const leg = { id: crypto.randomUUID(), name, description };
+      const leg = { id: crypto.randomUUID(), raceId: selectedRace, name, description };
       legs.push(leg);
       selectedView = leg.id;
-      homeOpen = false;
+      screen = "editor";
       setMode("pan");
     }
     legDialog.close();
@@ -707,10 +827,13 @@ export function createWayfinder(map) {
     savingTask = null;
     markings = [];
     legs = [];
+    races = [];
+    selectedRace = null;
     selectedView = "master";
-    homeOpen = true;
+    screen = "home";
     generation = 0;
     savedGeneration = 0;
+    if (raceDialog.open) raceDialog.close();
     if (dialog.open) {
       dialog.close();
     }
@@ -725,7 +848,7 @@ export function createWayfinder(map) {
     notifyView();
   });
   window.addEventListener("beforeunload", (event) => {
-    if ((authEnabled && generation !== savedGeneration) || (!authEnabled && (markings.length || legs.length))) {
+    if ((authEnabled && generation !== savedGeneration) || (!authEnabled && (markings.length || legs.length || races.length))) {
       event.preventDefault();
       event.returnValue = "";
     }
@@ -738,10 +861,24 @@ export function createWayfinder(map) {
     setSaveStatus("Local preview only: legs and markings are lost when this page closes or refreshes.");
   }
   return {
-    selectedLeg: () => legs.find((entry) => entry.id === selectedView) ?? null,
+    selectedLeg: () => screen === "editor" ? legs.find((entry) => entry.id === selectedView) ?? null : null,
+    setDraft: (center) => {
+      const leg = screen === "editor" ? legs.find((entry) => entry.id === selectedView) : null;
+      if (!leg || leg.frame || (leg.draft?.lat === center.lat && leg.draft?.lng === center.lng)) return;
+      leg.draft = { lat: center.lat, lng: center.lng };
+      generation += 1;
+      draw();
+      scheduleSave();
+    },
+    setMapFrameAvailable: (available) => {
+      frameAvailable = available;
+      renderFrameStatus();
+    },
     setFrame: (frame) => {
       const leg = legs.find((entry) => entry.id === selectedView);
       if (!leg) throw new Error("Select a leg first.");
+      const position = frame ?? leg.frame;
+      if (position) leg.draft = { lat: position.lat, lng: position.lng };
       if (frame) leg.frame = frame;
       else delete leg.frame;
       changed();

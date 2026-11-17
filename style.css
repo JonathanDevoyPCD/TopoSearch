@@ -5,6 +5,7 @@
 }
 
 #print-choice::backdrop,
+#wayfinder-race-dialog::backdrop,
 #wayfinder-leg-dialog::backdrop,
 #wayfinder-name-dialog::backdrop {
   background: rgba(28, 25, 23, 0.55);
@@ -59,25 +60,53 @@
   cursor: move;
 }
 
-.print-area-watermark {
-  color: #7c2d12;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-shadow: 0 1px 2px white, 0 0 4px white;
-  white-space: nowrap;
-}
-
 .frame-handle {
   display: grid;
   place-items: center;
-  border: 2px solid #d14d2a;
+  border: 2px solid #047857;
   border-radius: 50%;
   background: #fff;
-  color: #d14d2a;
+  color: #047857;
   font-size: 18px;
   line-height: 1;
   cursor: move;
+}
+
+#map.frame-locked .frame-handle {
+  border-color: #b91c1c;
+  color: #b91c1c;
+}
+
+#wayfinder-frame-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  border-color: #047857;
+  background: #047857;
+  color: white;
+}
+
+#wayfinder-frame-toggle[data-locked="true"] {
+  border-color: #b91c1c;
+  background: #b91c1c;
+}
+
+#wayfinder-frame-toggle svg {
+  width: 18px;
+  height: 18px;
+  flex: none;
+}
+
+#wayfinder-frame-toggle:focus-visible {
+  outline: 2px solid #1c1917;
+  outline-offset: 2px;
+}
+
+.wayfinder-leg-map-controls button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 .sidebar-blend {
@@ -113,6 +142,13 @@
   display: grid;
   gap: 10px;
   padding-top: 10px;
+}
+
+#wayfinder-race,
+#wayfinder-maps,
+#wayfinder-race-library {
+  display: grid;
+  gap: 10px;
 }
 
 .sidebar-content > div[class*="sm:w-"] {
@@ -306,4 +342,42 @@ header {
     top: 10px !important;
     left: 10px;
     border-radius: 0.75rem;
+}
+
+@media (max-width: 560px) {
+  header {
+    max-width: calc(100vw - 20px);
+  }
+
+  header > div {
+    gap: 8px;
+    padding: 8px 12px;
+  }
+
+  header > div > div:first-child {
+    flex-shrink: 0;
+  }
+
+  #focus-sheet {
+    min-width: 0;
+    max-width: 135px;
+  }
+
+  #focus-sheet > span {
+    min-width: 0;
+  }
+
+  #selected-sheet-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  section.rounded-xl.bg-white.p-4.shadow-sm.ring-1.ring-stone-200 {
+    position: fixed;
+    top: auto;
+    bottom: 10px;
+    width: calc(100vw - 20px);
+    max-height: 45vh;
+  }
 }

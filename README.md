@@ -1,8 +1,8 @@
 # TopoSearch
 
 A lightweight South African topographic map viewer initially centred on
-**3325CC (Loerie)**. Place a free frame, choose a paper size, and use
-**Download print PDF** to create a map at 1:50,000.
+**3325CC (Loerie)**. Create a race and a leg map, then download an A3 PDF at
+1:50,000.
 
 ## Run locally
 
@@ -77,7 +77,7 @@ The `leg_generation_pairs` table is required by the updated Worker and must
 be created before deployment. Monthly usage includes both `generations` and
 `leg_generation_pairs`; an administrative usage reset must account for both.
 
-Deploy the updated Worker before publishing the leg-enabled viewer. Older
+Deploy the updated Worker before publishing the race-enabled viewer. Older
 Workers reject the new WayFinder format, and older viewers cannot open data
 saved in that format; refresh other open tabs after updating.
 
@@ -89,22 +89,28 @@ The sidebar keeps **Map blend** at the top and groups map settings, WayFinder,
 and print controls in expandable sections.
 Use **Hide tools** to free up space on the map while keeping the blend slider visible.
 
-**WayFinder** is in the sidebar. Add a leg and give it a name and optional
-description, then open its screen to add markings. Use **Back to WayFinder**
-to choose another leg or the global Master and Blank maps. Each marking can be
-assigned to one leg or left unassigned using the markings list. Existing
-markings remain unassigned on the Master Map. The Master Map shows all
-markings; each leg shows only its own. New markings default to **Hide on Blank
-Map**; uncheck it while creating or editing a marking to include it. Highlights
-have the same option. The global Blank Map contains included markings from all
-legs and unassigned markings.
-Deleting a leg leaves its markings unassigned on the Master Map.
+Open **WayFinder > Create Race**, name the race, then choose **Create Map >
+Add Leg**. Each leg is an A3 map. Position its frame by dragging it or clicking
+the map, then lock it before downloading. Markings may be added before or after
+locking. Other legs in the same race remain visible at 20% opacity while the
+selected leg is edited; they are not included in its PDF.
 
-In a leg screen, position the frame and choose the paper size, then lock the
-selection. A leg remembers its own locked frame across devices. The frame and
-paper size cannot be changed until the user confirms unlocking. The leg's
-Master PDF contains that leg's markings; its Blank PDF contains only markings
-not hidden on the Blank Map. Both are generated with the locked frame.
+Open an existing race from **My races** and choose **View Maps** to edit its
+legs. Each marking belongs to one leg and can be reassigned to another leg in
+the same race. Deleting a leg keeps its markings in a separate recovered map.
+New markings default to **Hide on Blank Map**; uncheck it while creating or
+editing a marking to include it in the Blank PDF. Highlights have the same option.
+
+A leg remembers its locked frame across devices. The frame cannot be changed
+until the user confirms unlocking. Download **Master PDF** for the leg's
+markings or **Blank PDF** for the same map with selected markings hidden.
+An unlocked frame and button are green; a locked frame and button are red.
+
+Existing WayFinder data is imported into an **Imported race** when loaded.
+Unassigned markings are kept together in an **Imported markings** leg.
+Previously locked non-A3 frames are automatically converted to A3 with a new
+lock; the next matching download uses a new generation. Existing A3 locks retain
+their paid download pair.
 
 Choose CP, TA, Start,
 Finish or Label, click the map and name the marking. CP and TA names are
@@ -123,11 +129,12 @@ Saving is not live-synchronized: if another device changes the markings,
 WayFinder warns about the conflict rather than silently overwriting them.
 Unsaved work can be kept on screen, or explicitly used to replace the saved
 version. The local no-sign-in preview keeps markings only until the page closes
-or refreshes. The limit is 100 legs, 500 markings and 10,000 highlight points.
+or refreshes. The limit is 100 legs, 500 markings and 10,000 highlight points;
+an imported unassigned-markings leg may exceed the leg limit by one.
 
-Topographic and aerial PDFs use the selected Master, Blank, or leg map. They
-include its WayFinder points whose centres are within
-the **PRINTED MAP** outline, and clip highlight strokes at that outline.
+Topographic and aerial PDFs use the selected leg map. They include its
+WayFinder points whose centres are within
+the inner map outline, and clip highlight strokes at that outline.
 Markings are not added to original race-map TIF files.
 
 **Map blend** fades between NGI topographic maps and the
@@ -152,13 +159,11 @@ and Blank downloads with those same settings are free while the frame remains
 locked, including when the monthly quota is exhausted. Unlocking and locking
 again, or choosing a different layer, source or imagery, starts a new paid pair.
 Returning to a previously paid combination remains free until the frame is unlocked.
-General (non-leg) PDF downloads each use one generation.
 
-**Free Frame** is the map selection tool. Select A0, A1, A2, A3, or A4 portrait
-paper, then click or drag the frame to position it. The outer dashed outline
-shows the full paper footprint; its shaded border is reserved for page details.
-The inner outline marked **PRINTED MAP** shows exactly the imagery included in
-the PDF. Changing the paper size changes the area covered, not the print scale.
+**Free Frame** is the map selection tool. After adding a leg, click or drag
+its A3 frame to position it. The outer dashed outline shows the full paper
+footprint; its shaded border is reserved for page details. The inner outline
+shows exactly the imagery included in the PDF.
 The frame stays within the dashed downloadable area.
 
 The centre of the printed map identifies the 1:50,000 sheet for original race
@@ -194,9 +199,8 @@ TopoSearch for TIF files.
   lower zoom to keep browser memory bounded. Printing the 1:250,000 layer enlarges
   its source data to 1:50,000 and does not add detail.
 
-  A0 and A1 PDFs include the full generalized bilingual reference key, coordinate
-  ticks, north references and sheet index. A2, A3 and A4 use a compact generalized
-  legend and scale bar. All show the extent, source, generation time and NGI
+  A3 PDFs include a compact generalized legend and scale bar. They show the
+  extent, source, generation time and NGI
   attribution. Magnetic declination is calculated at the frame centre for the PDF generation date using the WMM2025
   model; the calculation is local and does not require an API. WMM2025 is valid
   through 2029, so the model must be updated before generating PDFs in 2030.
