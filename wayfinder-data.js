@@ -129,7 +129,8 @@ export function validateWayfinderData(data) {
   }
   return data.markings.every((marking) =>
     ((data.version === 1 && marking.legId === undefined) || legIds.has(marking.legId)) &&
-    (marking.showOnBlank === undefined || typeof marking.showOnBlank === "boolean"));
+    (marking.showOnBlank === undefined || typeof marking.showOnBlank === "boolean") &&
+    (marking.allowInheritance === undefined || typeof marking.allowInheritance === "boolean"));
 }
 
 export function migrateWayfinderData(data, newId) {
@@ -187,7 +188,29 @@ export function visibleWayfinderMarkings(data, view) {
   return data.markings.filter((marking) => marking.legId === view);
 }
 
-export function legWayfinderMarkings(data, legId, blank = false) {
-  return data.markings.filter((marking) =>
+export function legWayfinderMarkings(data, legId, blank = false, bounds = null) {
+  const own = data.markings.filter((marking) =>
     marking.legId === legId && (!blank || marking.showOnBlank === true));
+  return bounds ? [...own, ...inheritedWayfinderMarkings(data, legId, bounds, blank)] : own;
+}
+
+function markingTouchesBounds(marking, bounds) {
+  if (marking.type === "highlight" || marking.type === "path") {
+    const lats = marking.points.map((point) => point[0]);
+    const lngs = marking.points.map((point) => point[1]);
+    return Math.max(...lats) >= bounds.south && Math.min(...lats) <= bounds.north &&
+      Math.max(...lngs) >= bounds.west && Math.min(...lngs) <= bounds.east;
+  }
+  return marking.lat >= bounds.south && marking.lat <= bounds.north &&
+    marking.lng >= bounds.west && marking.lng <= bounds.east;
+}
+
+// Markings from other legs of the same race that opted in and fall inside this leg's map area.
+export function inheritedWayfinderMarkings(data, legId, bounds, blank = false) {
+  const raceId = data.legs?.find((leg) => leg.id === legId)?.raceId;
+  if (raceId === undefined) return [];
+  const raceLegs = new Set(data.legs.filter((leg) => leg.raceId === raceId).map((leg) => leg.id));
+  return data.markings.filter((marking) =>
+    marking.legId !== legId && raceLegs.has(marking.legId) && marking.allowInheritance === true &&
+    (!blank || marking.showOnBlank === true) && markingTouchesBounds(marking, bounds));
 }

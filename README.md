@@ -102,6 +102,9 @@ legs. Each marking belongs to one leg and can be reassigned to another leg in
 the same race. Deleting a leg keeps its markings in a separate recovered map.
 New markings default to **Hide on Blank Map**; uncheck it while creating or
 editing a marking to include it in the Blank PDF. Highlights have the same option.
+Tick **Allow Map Inheritance** (beside it, off by default) to let other legs of the same
+race print that marking when it falls inside their map area; inherited markings show at
+full strength on the map and print at full strength in the PDF.
 
 A leg remembers its locked frame across devices. The frame cannot be changed
 until the user confirms unlocking. Download **Master PDF** for the leg's

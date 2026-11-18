@@ -81,3 +81,24 @@ test("import preserves unassigned markings even when the old leg limit is full",
   assert.equal(data.markings[0].legId, data.legs[100].id);
   assert.equal(validateWayfinderData(data), true);
 });
+
+test("legs inherit opted-in markings from the same race inside their map area", () => {
+  const point = { type: "ta", name: "TA2", lat: -34, lng: 25, showOnBlank: true };
+  const data = {
+    legs: [{ id: "one", raceId: "r1" }, { id: "two", raceId: "r1" }, { id: "other", raceId: "r2" }],
+    markings: [
+      { ...point, id: "a", legId: "one", allowInheritance: true },
+      { ...point, id: "b", legId: "one" },
+      { ...point, id: "c", legId: "one", allowInheritance: true, lat: -40 },
+      { ...point, id: "d", legId: "other", allowInheritance: true },
+      { ...point, id: "e", legId: "one", allowInheritance: true, showOnBlank: false },
+      { id: "f", type: "path", legId: "one", allowInheritance: true, points: [[-33, 24], [-35, 26]] },
+      { ...point, id: "g", legId: "two" }
+    ]
+  };
+  const bounds = { west: 24.9, east: 25.1, south: -34.1, north: -33.9 };
+  const ids = (blank) => legWayfinderMarkings(data, "two", blank, bounds).map((marking) => marking.id);
+  assert.deepEqual(ids(false), ["g", "a", "e", "f"]);
+  assert.deepEqual(ids(true), ["g", "a"]);
+  assert.deepEqual(legWayfinderMarkings(data, "two").map((marking) => marking.id), ["g"]);
+});

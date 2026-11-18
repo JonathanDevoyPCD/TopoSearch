@@ -314,7 +314,10 @@
                     <option value="green">Green</option>
                   </select>
                 </label>
-                <label class="wayfinder-blank-option"><input id="wayfinder-highlight-hide" type="checkbox" checked> Hide new highlights on Blank Map</label>
+                <div class="wayfinder-toggle-row">
+                  <label class="wayfinder-blank-option"><input id="wayfinder-highlight-hide" type="checkbox" checked> Hide on Blank Map</label>
+                  <label class="wayfinder-blank-option"><input id="wayfinder-highlight-inherit" type="checkbox"> Allow Map Inheritance</label>
+                </div>
               </div>
               <div id="wayfinder-pen-options" hidden>
                 <label class="wayfinder-color" for="wayfinder-pen-color">Pen color
@@ -335,7 +338,10 @@
                     <option value="dotted">Dotted</option>
                   </select>
                 </label>
-                <label class="wayfinder-blank-option"><input id="wayfinder-pen-hide" type="checkbox" checked> Hide new lines on Blank Map</label>
+                <div class="wayfinder-toggle-row">
+                  <label class="wayfinder-blank-option"><input id="wayfinder-pen-hide" type="checkbox" checked> Hide on Blank Map</label>
+                  <label class="wayfinder-blank-option"><input id="wayfinder-pen-inherit" type="checkbox"> Allow Map Inheritance</label>
+                </div>
               </div>
               <p id="wayfinder-hint" class="wayfinder-hint">Choose a tool, then mark the map.</p>
               <details class="wayfinder-markings">
@@ -416,7 +422,10 @@
             <label for="wayfinder-name" class="label mt-4">Name</label>
             <input id="wayfinder-name" class="field" maxlength="80" required autocomplete="off">
             <p class="mt-2 text-xs text-stone-500">Up to 80 characters; Latin letters, numbers and punctuation.</p>
-            <label class="wayfinder-blank-option mt-4"><input id="wayfinder-hide-blank" type="checkbox" checked> Hide on Blank Map</label>
+            <div class="wayfinder-toggle-row mt-4">
+              <label class="wayfinder-blank-option"><input id="wayfinder-hide-blank" type="checkbox" checked> Hide on Blank Map</label>
+              <label class="wayfinder-blank-option"><input id="wayfinder-allow-inheritance" type="checkbox"> Allow Map Inheritance</label>
+            </div>
             <div id="wayfinder-marker-details" hidden>
               <label for="wayfinder-description" class="label mt-4">Description (optional)</label>
               <input id="wayfinder-description" class="field" maxlength="80" autocomplete="off">

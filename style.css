@@ -217,6 +217,20 @@
   font-size: 12px;
 }
 
+.wayfinder-toggle-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin-top: 8px;
+}
+
+.wayfinder-toggle-row .wayfinder-blank-option {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
 .wayfinder-markings summary {
   cursor: pointer;
   font-size: 13px;

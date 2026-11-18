@@ -3,7 +3,7 @@ import {
   WAYFINDER_COLORS, WAYFINDER_LABEL_POSITIONS, WAYFINDER_MAX_LEGS, WAYFINDER_MAX_RACES, WAYFINDER_POINT_TYPES,
   WAYFINDER_PEN_THICKNESSES_MM,
   validWayfinderName, validWayfinderDescription, validRaceDistance, validateWayfinderData, validateWayfinderMarkings,
-  visibleWayfinderMarkings, legWayfinderMarkings, wayfinderMarkerColor, migrateWayfinderData
+  visibleWayfinderMarkings, legWayfinderMarkings, inheritedWayfinderMarkings, wayfinderMarkerColor, migrateWayfinderData
 } from "./wayfinder-data.js";
 import { wayfinderPenDash } from "./wayfinder-print.js";
 import { frameGeometry } from "./print-layout.js";
@@ -50,6 +50,9 @@ export function createWayfinder(map) {
   const penThickness = document.querySelector("#wayfinder-pen-thickness");
   const penStyle = document.querySelector("#wayfinder-pen-style");
   const penHideInput = document.querySelector("#wayfinder-pen-hide");
+  const penInheritInput = document.querySelector("#wayfinder-pen-inherit");
+  const highlightInheritInput = document.querySelector("#wayfinder-highlight-inherit");
+  const allowInheritanceInput = document.querySelector("#wayfinder-allow-inheritance");
   const hint = document.querySelector("#wayfinder-hint");
   const saveStatus = document.querySelector("#wayfinder-save-status");
   const retry = document.querySelector("#wayfinder-retry");
@@ -169,7 +172,8 @@ export function createWayfinder(map) {
     if (save && points.length >= 2) {
       add({
         id: crypto.randomUUID(), type: "path", color: penColor.value, style: penStyle.value,
-        width: penWidth(points[0][0]), points, showOnBlank: !penHideInput.checked
+        width: penWidth(points[0][0]), points, showOnBlank: !penHideInput.checked,
+        allowInheritance: penInheritInput.checked
       });
     }
   }
@@ -218,12 +222,18 @@ export function createWayfinder(map) {
     }
     const legIds = new Set(raceLegs.map((leg) => leg.id));
     const visible = markings.filter((marking) => legIds.has(marking.legId));
+    const activePosition = activeLeg.frame ?? activeLeg.draft;
+    const inherited = new Set(activePosition
+      ? inheritedWayfinderMarkings({ legs, markings }, activeLeg.id, frameGeometry(activePosition, "A3").map)
+        .map((marking) => marking.id)
+      : []);
     const ordered = [...visible.filter((marking) => marking.type === "highlight"),
       ...visible.filter((marking) => marking.type === "path"),
       ...visible.filter((marking) => marking.type !== "highlight" && marking.type !== "path")]
-      .sort((a, b) => Number(a.legId === activeLeg.id) - Number(b.legId === activeLeg.id));
+      .sort((a, b) => Number(a.legId === activeLeg.id || inherited.has(a.id)) -
+        Number(b.legId === activeLeg.id || inherited.has(b.id)));
     for (const marking of ordered) {
-      const opacity = marking.legId === activeLeg.id ? 1 : 0.2;
+      const opacity = marking.legId === activeLeg.id || inherited.has(marking.id) ? 1 : 0.2;
       if (marking.type === "path") {
         L.polyline(marking.points, penLineOptions(marking, opacity)).addTo(layers);
         continue;
@@ -281,17 +291,25 @@ export function createWayfinder(map) {
       title.textContent = marking.type === "highlight" ? `${marking.color} highlight`
         : marking.type === "path" ? `${marking.style} line` : marking.name;
       item.append(title);
-      const label = document.createElement("label");
-      const checkbox = document.createElement("input");
-      checkbox.type = "checkbox";
-      checkbox.checked = marking.showOnBlank !== true;
-      checkbox.disabled = !ready;
-      checkbox.addEventListener("change", () => {
-        marking.showOnBlank = !checkbox.checked;
-        changed();
-      });
-      label.append(checkbox, " Hide on Blank Map");
-      item.append(label);
+      const toggles = document.createElement("div");
+      toggles.className = "wayfinder-toggle-row";
+      const addToggle = (text, checked, apply) => {
+        const label = document.createElement("label");
+        label.className = "wayfinder-blank-option";
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.checked = checked;
+        checkbox.disabled = !ready;
+        checkbox.addEventListener("change", () => {
+          apply(checkbox.checked);
+          changed();
+        });
+        label.append(checkbox, ` ${text}`);
+        toggles.append(label);
+      };
+      addToggle("Hide on Blank Map", marking.showOnBlank !== true, (value) => { marking.showOnBlank = !value; });
+      addToggle("Allow Map Inheritance", marking.allowInheritance === true, (value) => { marking.allowInheritance = value; });
+      item.append(toggles);
       const assignment = document.createElement("select");
       assignment.className = "field";
       assignment.setAttribute("aria-label", `Leg for ${title.textContent}`);
@@ -553,6 +571,7 @@ export function createWayfinder(map) {
     markerDetails.hidden = !isMarker;
     descriptionInput.value = isMarker ? marking.description ?? "" : "";
     hideBlankInput.checked = marking.showOnBlank !== true;
+    allowInheritanceInput.checked = marking.allowInheritance === true;
     markerColorInput.value = isMarker ? wayfinderMarkerColor(marking) : "#000000";
     labelPositionInput.value = isMarker ? marking.labelPosition ?? "bottom" : "bottom";
     nameError.hidden = true;
@@ -569,7 +588,7 @@ export function createWayfinder(map) {
       nameError.hidden = false;
       return;
     }
-    const details = { name, showOnBlank: !hideBlankInput.checked };
+    const details = { name, showOnBlank: !hideBlankInput.checked, allowInheritance: allowInheritanceInput.checked };
     if (!markerDetails.hidden) {
       const description = descriptionInput.value.trim();
       if (!validWayfinderDescription(description)) {
@@ -714,7 +733,8 @@ export function createWayfinder(map) {
     if (finished.points) {
       if (finished.points.length >= 2) {
         add({ id: crypto.randomUUID(), type: "highlight", color: finished.color, width: finished.width,
-          points: finished.points, showOnBlank: !highlightHideInput.checked });
+          points: finished.points, showOnBlank: !highlightHideInput.checked,
+          allowInheritance: highlightInheritInput.checked });
       } else {
         hint.textContent = "Drag across the map to draw a highlight.";
       }
@@ -1000,7 +1020,11 @@ export function createWayfinder(map) {
       notifyView();
     },
     ensureSaved,
-    legSnapshot: (legId, blank) => structuredClone(legWayfinderMarkings(currentData(), legId, blank)),
+    legSnapshot: (legId, blank) => {
+      const leg = legs.find((entry) => entry.id === legId);
+      const bounds = leg?.frame ? frameGeometry(leg.frame, "A3").map : null;
+      return structuredClone(legWayfinderMarkings(currentData(), legId, blank, bounds));
+    },
     snapshot: () => {
       if (!ready) {
         throw new Error("WayFinder is not ready. Load your saved markings before printing.");
