@@ -20,6 +20,9 @@ export const WAYFINDER_LABEL_POSITIONS = {
   left: [-1, 0],
   "top-left": [-1, -1]
 };
+export const WAYFINDER_PEN_STYLES = ["solid", "dashed", "dotted"];
+// Pen widths are stored in projected metres; the UI offers printed-paper millimetres at 1:50 000.
+export const WAYFINDER_PEN_THICKNESSES_MM = { fine: 0.3, medium: 0.6, thick: 1, bold: 1.6 };
 export const WAYFINDER_POINT_TYPES = ["cp", "ta", "start", "finish", "label"];
 export const WAYFINDER_MAX_MARKINGS = 500;
 export const WAYFINDER_MAX_POINTS = 10000;
@@ -60,8 +63,12 @@ export function validateWayfinderMarkings(markings) {
       return false;
     }
     ids.add(marking.id);
-    if (marking.type === "highlight") {
-      if (!Object.hasOwn(WAYFINDER_COLORS, marking.color) || !Array.isArray(marking.points) ||
+    if (marking.type === "highlight" || marking.type === "path") {
+      const colorValid = marking.type === "highlight"
+        ? Object.hasOwn(WAYFINDER_COLORS, marking.color)
+        : typeof marking.color === "string" && /^#[0-9a-f]{6}$/i.test(marking.color) &&
+          WAYFINDER_PEN_STYLES.includes(marking.style);
+      if (!colorValid || !Array.isArray(marking.points) ||
           marking.points.length < 2 || !Number.isFinite(marking.width) ||
           marking.width <= 0 || marking.width > 1000000) {
         return false;

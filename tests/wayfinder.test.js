@@ -204,3 +204,18 @@ test("PDF clips highlights and includes only point centres within the frame", ()
   const sized = wayfinderPdfCommands([{ ...markings[2], width }], bounds, layout);
   assert.match(sized, /14\.17 w/);
 });
+
+test("validates pen paths and renders their colour, width and line type in the PDF", () => {
+  const path = { id: "p", type: "path", color: "#dc2626", style: "dashed", width: 50, points: [[-34, 25], [-34.1, 25.1]] };
+  assert.equal(validateWayfinderMarkings([path]), true);
+  for (const bad of [{ color: "red" }, { style: "wavy" }, { width: 0 }, { points: [[-34, 25]] }]) {
+    assert.equal(validateWayfinderMarkings([{ ...path, ...bad }]), false);
+  }
+  const bounds = { west: 24, east: 26, north: -33, south: -35 };
+  const layout = { pageHeight: 297, mapX: 10, mapY: 20, mapWidth: 100, mapHeight: 200 };
+  const render = (style) => wayfinderPdfCommands([{ ...path, style }], bounds, layout, measureText);
+  assert.match(render("solid"), /0\.863 0\.149 0\.149 RG[^\n]* 0 J 1 j \[\] 0 d/);
+  assert.match(render("dashed"), /0 J 1 j \[[\d. ]+\] 0 d/);
+  assert.match(render("dotted"), /1 J 1 j \[0\.00 [\d.]+\] 0 d/);
+  assert.doesNotMatch(render("solid"), /\/WF gs/);
+});

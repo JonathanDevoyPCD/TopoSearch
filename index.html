@@ -303,16 +303,40 @@
                 <button type="button" data-wayfinder-tool="finish" aria-pressed="false">Finish</button>
                 <button type="button" data-wayfinder-tool="label" aria-pressed="false">Label</button>
                 <button type="button" data-wayfinder-tool="highlight" aria-pressed="false">Highlighter</button>
+                <button type="button" data-wayfinder-tool="pen" aria-pressed="false">Pen</button>
               </div>
-              <label class="wayfinder-color" for="wayfinder-color">Highlighter color
-                <select id="wayfinder-color" class="field">
-                  <option value="yellow">Yellow</option>
-                  <option value="orange">Orange</option>
-                  <option value="cyan">Cyan</option>
-                  <option value="green">Green</option>
-                </select>
-              </label>
-              <label class="wayfinder-blank-option"><input id="wayfinder-highlight-hide" type="checkbox" checked> Hide new highlights on Blank Map</label>
+              <div id="wayfinder-highlight-options" hidden>
+                <label class="wayfinder-color" for="wayfinder-color">Highlighter color
+                  <select id="wayfinder-color" class="field">
+                    <option value="yellow">Yellow</option>
+                    <option value="orange">Orange</option>
+                    <option value="cyan">Cyan</option>
+                    <option value="green">Green</option>
+                  </select>
+                </label>
+                <label class="wayfinder-blank-option"><input id="wayfinder-highlight-hide" type="checkbox" checked> Hide new highlights on Blank Map</label>
+              </div>
+              <div id="wayfinder-pen-options" hidden>
+                <label class="wayfinder-color" for="wayfinder-pen-color">Pen color
+                  <input id="wayfinder-pen-color" class="wayfinder-color-input" type="color" value="#dc2626">
+                </label>
+                <label class="wayfinder-color" for="wayfinder-pen-thickness">Thickness
+                  <select id="wayfinder-pen-thickness" class="field">
+                    <option value="fine">Fine</option>
+                    <option value="medium" selected>Medium</option>
+                    <option value="thick">Thick</option>
+                    <option value="bold">Bold</option>
+                  </select>
+                </label>
+                <label class="wayfinder-color" for="wayfinder-pen-style">Line type
+                  <select id="wayfinder-pen-style" class="field">
+                    <option value="solid">Solid</option>
+                    <option value="dashed">Dashed</option>
+                    <option value="dotted">Dotted</option>
+                  </select>
+                </label>
+                <label class="wayfinder-blank-option"><input id="wayfinder-pen-hide" type="checkbox" checked> Hide new lines on Blank Map</label>
+              </div>
               <p id="wayfinder-hint" class="wayfinder-hint">Choose a tool, then mark the map.</p>
               <details class="wayfinder-markings">
                 <summary>Markings <span id="wayfinder-count">0</span></summary>

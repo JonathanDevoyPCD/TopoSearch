@@ -122,7 +122,11 @@ custom marker colour. Choose one of eight label positions around the circle;
 names and descriptions match its colour with white outlines on the map and in
 PDFs. Existing markers default to a position below the circle and keep their default
 pink CP or blue TA colour until changed. Choose Highlighter and drag to draw; yellow, orange,
-cyan and green are available. Zoom in before drawing a narrower stroke. Use the
+cyan and green are available. Zoom in before drawing a narrower stroke. Choose **Pen**
+to draw routes: pick a colour, thickness (printed mm at 1:50 000) and solid, dashed or
+dotted line, then click to add points. Backspace removes the last point; Enter or Esc
+finishes the line and returns to Frame / pan. Highlighter and Pen options only show
+while that tool is selected. Use the
 markings list to move, edit or delete items, then choose **Frame / pan** to
 adjust the print frame or pan the map. Names and descriptions support up to
 80 printable Latin-1 characters.

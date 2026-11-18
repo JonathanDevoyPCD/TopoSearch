@@ -1,9 +1,11 @@
 import { authEnabled, wayfinderRequest } from "./auth.js";
 import {
   WAYFINDER_COLORS, WAYFINDER_LABEL_POSITIONS, WAYFINDER_MAX_LEGS, WAYFINDER_MAX_RACES, WAYFINDER_POINT_TYPES,
+  WAYFINDER_PEN_THICKNESSES_MM,
   validWayfinderName, validWayfinderDescription, validRaceDistance, validateWayfinderData, validateWayfinderMarkings,
   visibleWayfinderMarkings, legWayfinderMarkings, wayfinderMarkerColor, migrateWayfinderData
 } from "./wayfinder-data.js";
+import { wayfinderPenDash } from "./wayfinder-print.js";
 import { frameGeometry } from "./print-layout.js";
 
 export function createWayfinder(map) {
@@ -42,6 +44,12 @@ export function createWayfinder(map) {
   const legError = document.querySelector("#wayfinder-leg-error");
   const tools = document.querySelector("#wayfinder-tools");
   const color = document.querySelector("#wayfinder-color");
+  const highlightOptions = document.querySelector("#wayfinder-highlight-options");
+  const penOptions = document.querySelector("#wayfinder-pen-options");
+  const penColor = document.querySelector("#wayfinder-pen-color");
+  const penThickness = document.querySelector("#wayfinder-pen-thickness");
+  const penStyle = document.querySelector("#wayfinder-pen-style");
+  const penHideInput = document.querySelector("#wayfinder-pen-hide");
   const hint = document.querySelector("#wayfinder-hint");
   const saveStatus = document.querySelector("#wayfinder-save-status");
   const retry = document.querySelector("#wayfinder-retry");
@@ -61,6 +69,9 @@ export function createWayfinder(map) {
   const layers = L.layerGroup().addTo(map);
   map.createPane("wayfinder");
   map.getPane("wayfinder").style.zIndex = "460";
+  const penLayer = L.layerGroup().addTo(map);
+  let penPoints = [];
+  let penCursor = null;
 
   let markings = [];
   let legs = [];
@@ -121,12 +132,59 @@ export function createWayfinder(map) {
     list.querySelectorAll("button, select, input").forEach((element) => { element.disabled = !ready; });
   }
 
+  function penWidth(lat, thickness = penThickness.value) {
+    return (WAYFINDER_PEN_THICKNESSES_MM[thickness] ?? WAYFINDER_PEN_THICKNESSES_MM.medium) * 50 /
+      Math.cos(lat * Math.PI / 180);
+  }
+
+  function penLineOptions(marking, opacity = 1) {
+    const weight = marking.width * 256 * 2 ** map.getZoom() / mercatorWorldWidth;
+    const dash = wayfinderPenDash(marking.style, weight);
+    return {
+      pane: "wayfinder", color: marking.color, opacity, weight, interactive: false,
+      lineCap: marking.style === "dotted" ? "round" : "butt", lineJoin: "round",
+      dashArray: dash.length ? dash.join(" ") : null
+    };
+  }
+
+  function renderPenDraft() {
+    penLayer.clearLayers();
+    if (!penPoints.length) return;
+    const draft = { color: penColor.value, style: penStyle.value, width: penWidth(penPoints[0][0]) };
+    const path = penCursor ? [...penPoints, penCursor] : penPoints;
+    if (path.length > 1) L.polyline(path, penLineOptions(draft)).addTo(penLayer);
+    for (const point of penPoints) {
+      L.circleMarker(point, {
+        pane: "wayfinder", radius: 3.5, color: "#ffffff", weight: 1.5, fillColor: draft.color,
+        fillOpacity: 1, interactive: false
+      }).addTo(penLayer);
+    }
+  }
+
+  function endPen(save = true) {
+    const points = penPoints;
+    penPoints = [];
+    penCursor = null;
+    penLayer.clearLayers();
+    if (save && points.length >= 2) {
+      add({
+        id: crypto.randomUUID(), type: "path", color: penColor.value, style: penStyle.value,
+        width: penWidth(points[0][0]), points, showOnBlank: !penHideInput.checked
+      });
+    }
+  }
+
   function setMode(value, id = null) {
+    if (mode === "pen" && value !== "pen") {
+      endPen();
+    }
     mode = value;
     movingId = id;
     tools.querySelectorAll("button").forEach((button) => {
       button.setAttribute("aria-pressed", String(button.dataset.wayfinderTool === value));
     });
+    highlightOptions.hidden = value !== "highlight";
+    penOptions.hidden = value !== "pen";
     container.classList.toggle("wayfinder-drawing", value !== "pan");
     const messages = {
       pan: "Choose a tool, then mark the map.",
@@ -136,6 +194,7 @@ export function createWayfinder(map) {
       finish: "Click the map to add a finish.",
       label: "Click the map to add a label.",
       highlight: "Drag over the map to highlight an area. Zoom in for a narrower stroke.",
+      pen: "Click to add points. Backspace undoes the last point. Enter or Esc finishes the line.",
       move: "Click the map to move the selected marking."
     };
     hint.textContent = messages[value];
@@ -160,10 +219,15 @@ export function createWayfinder(map) {
     const legIds = new Set(raceLegs.map((leg) => leg.id));
     const visible = markings.filter((marking) => legIds.has(marking.legId));
     const ordered = [...visible.filter((marking) => marking.type === "highlight"),
-      ...visible.filter((marking) => marking.type !== "highlight")]
+      ...visible.filter((marking) => marking.type === "path"),
+      ...visible.filter((marking) => marking.type !== "highlight" && marking.type !== "path")]
       .sort((a, b) => Number(a.legId === activeLeg.id) - Number(b.legId === activeLeg.id));
     for (const marking of ordered) {
       const opacity = marking.legId === activeLeg.id ? 1 : 0.2;
+      if (marking.type === "path") {
+        L.polyline(marking.points, penLineOptions(marking, opacity)).addTo(layers);
+        continue;
+      }
       if (marking.type === "highlight") {
         L.polyline(marking.points, {
           pane: "wayfinder", color: WAYFINDER_COLORS[marking.color], opacity: 0.45 * opacity,
@@ -214,7 +278,8 @@ export function createWayfinder(map) {
     for (const marking of visible) {
       const item = document.createElement("li");
       const title = document.createElement("strong");
-      title.textContent = marking.type === "highlight" ? `${marking.color} highlight` : marking.name;
+      title.textContent = marking.type === "highlight" ? `${marking.color} highlight`
+        : marking.type === "path" ? `${marking.style} line` : marking.name;
       item.append(title);
       const label = document.createElement("label");
       const checkbox = document.createElement("input");
@@ -254,7 +319,7 @@ export function createWayfinder(map) {
         item.append(element);
       };
       button("Move", () => setMode("move", marking.id));
-      if (marking.type !== "highlight") {
+      if (marking.type !== "highlight" && marking.type !== "path") {
         const isMarker = marking.type === "cp" || marking.type === "ta";
         button(isMarker ? "Edit" : "Rename", () => nameMarking(marking, (details) => {
           const current = markings.find((entry) => entry.id === marking.id);
@@ -562,7 +627,7 @@ export function createWayfinder(map) {
         return;
       }
       const next = structuredClone(marking);
-      if (next.type === "highlight") {
+      if (next.type === "highlight" || next.type === "path") {
         const first = map.project(L.latLng(next.points[0]), 0);
         const destination = map.project(latlng, 0);
         next.points = next.points.map((point) => {
@@ -581,6 +646,9 @@ export function createWayfinder(map) {
       markings = updated;
       setMode("pan");
       changed();
+    } else if (mode === "pen") {
+      penPoints.push([latlng.lat, latlng.lng]);
+      renderPenDraft();
     } else if (WAYFINDER_POINT_TYPES.includes(mode)) {
       const type = mode;
       nameMarking({ type, name: nextName(type) }, (details) => add({
@@ -824,12 +892,40 @@ export function createWayfinder(map) {
   document.querySelector("#wayfinder-leg-cancel").addEventListener("click", () => legDialog.close());
   retry.addEventListener("click", () => retryAction?.());
   document.addEventListener("keydown", (event) => {
+    if (mode === "pen" && !dialog.open && !legDialog.open && !raceDialog.open) {
+      const typing = event.target instanceof Element && event.target.matches("input[type=text], input[type=number], textarea");
+      if (event.key === "Enter" || event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        setMode("pan");
+        return;
+      }
+      if (event.key === "Backspace" && !typing) {
+        event.preventDefault();
+        penPoints.pop();
+        renderPenDraft();
+        return;
+      }
+    }
     if (event.key === "Escape" && !dialog.open && !legDialog.open && mode !== "pan") {
       setMode("pan");
     }
+  }, true);
+  container.addEventListener("pointermove", (event) => {
+    if (mode === "pen" && penPoints.length) {
+      const point = map.mouseEventToLatLng(event);
+      penCursor = [point.lat, point.lng];
+      renderPenDraft();
+    }
   });
+  for (const input of [penColor, penThickness, penStyle]) {
+    input.addEventListener("input", renderPenDraft);
+  }
   document.addEventListener("toposearch:signed-in", load);
-  map.on("zoomend", draw);
+  map.on("zoomend", () => {
+    draw();
+    renderPenDraft();
+  });
   document.addEventListener("toposearch:signing-out", (event) => {
     if (generation !== savedGeneration &&
         !window.confirm("WayFinder has unsaved changes. Log out and discard them?")) {

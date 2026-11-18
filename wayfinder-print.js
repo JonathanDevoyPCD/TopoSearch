@@ -10,6 +10,13 @@ export function pdfEscape(value) {
     .replace(/[\xa0-\xff]/g, (character) => `\\${character.charCodeAt(0).toString(8).padStart(3, "0")}`);
 }
 
+// Dash lengths scale with line width so the pattern looks the same on screen and in print.
+export function wayfinderPenDash(style, width) {
+  if (style === "dashed") return [width * 5, width * 3];
+  if (style === "dotted") return [0.001, width * 2.2];
+  return [];
+}
+
 export function projectWayfinderPoint(lat, lng, bounds, layout) {
   const top = mercatorY(bounds.north);
   const bottom = mercatorY(bounds.south);
@@ -32,14 +39,19 @@ export function wayfinderPdfCommands(markings, bounds, layout, measureText) {
     `q ${x(mapX)} ${y(mapY + mapHeight)} ${x(mapWidth)} ${x(mapHeight)} re W n`
   ];
 
-  for (const marking of markings) {
-    if (marking.type !== "highlight") {
-      continue;
-    }
+  const ordered = [...markings.filter((marking) => marking.type === "highlight"),
+    ...markings.filter((marking) => marking.type === "path")];
+  for (const marking of ordered) {
     const points = marking.points.map(project);
     const projectedWidth = (bounds.east - bounds.west) * Math.PI / 180 * 6378137;
     const strokeWidth = marking.width / projectedWidth * mapWidth;
-    commands.push(`q /WF gs ${rgb(WAYFINDER_COLORS[marking.color])} RG ${x(strokeWidth)} w 1 J 1 j`);
+    if (marking.type === "path") {
+      const dash = wayfinderPenDash(marking.style, strokeWidth);
+      commands.push(`q ${rgb(marking.color)} RG ${x(strokeWidth)} w ${marking.style === "dotted" ? 1 : 0} J 1 j ` +
+        `[${dash.map(x).join(" ")}] 0 d`);
+    } else {
+      commands.push(`q /WF gs ${rgb(WAYFINDER_COLORS[marking.color])} RG ${x(strokeWidth)} w 1 J 1 j`);
+    }
     commands.push(`${x(points[0].x)} ${y(points[0].y)} m`);
     for (const point of points.slice(1)) {
       commands.push(`${x(point.x)} ${y(point.y)} l`);
@@ -48,7 +60,7 @@ export function wayfinderPdfCommands(markings, bounds, layout, measureText) {
   }
 
   for (const marking of markings) {
-    if (marking.type === "highlight" || marking.lat < bounds.south || marking.lat > bounds.north ||
+    if (marking.type === "highlight" || marking.type === "path" || marking.lat < bounds.south || marking.lat > bounds.north ||
         marking.lng < bounds.west || marking.lng > bounds.east) {
       continue;
     }
